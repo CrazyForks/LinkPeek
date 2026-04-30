@@ -62,7 +62,8 @@ public class ProviderConfiguration {
     @Bean
     public LinuxDoPreviewProvider linuxDoPreviewProvider(
             LinkPeekProperties properties,
-            ProviderConfigService providerConfigService
+            ProviderConfigService providerConfigService,
+            ObjectMapper objectMapper
     ) {
         // Linux.do currently challenges Java HTTP/1.1 requests, while HTTP/2 returns the public topic page.
         HttpClient linuxDoHttpClient = HttpClient.newBuilder()
@@ -76,7 +77,8 @@ public class ProviderConfiguration {
                 URI.create("https://linux.do"),
                 properties.getDownloadTimeout(),
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                providerConfigService::linuxDoCookieHeader
+                providerConfigService::linuxDoCookieHeader,
+                objectMapper
         );
     }
 

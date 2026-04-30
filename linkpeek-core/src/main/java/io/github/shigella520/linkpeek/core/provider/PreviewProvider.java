@@ -16,6 +16,10 @@ public interface PreviewProvider {
 
     PreviewMetadata resolve(URI sourceUrl);
 
+    default PreviewMetadata enrichForAiTitle(PreviewMetadata metadata, URI sourceUrl) {
+        return metadata;
+    }
+
     default Path downloadThumbnail(PreviewMetadata metadata, Path targetPath) throws IOException {
         throw new MediaNotSupportedException("Thumbnail download is not supported by provider " + getId());
     }

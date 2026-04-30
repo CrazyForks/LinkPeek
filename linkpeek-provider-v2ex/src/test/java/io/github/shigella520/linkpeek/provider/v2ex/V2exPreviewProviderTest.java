@@ -106,7 +106,7 @@ class V2exPreviewProviderTest {
         assertEquals("https://www.v2ex.com/t/1205886", metadata.canonicalUrl());
         assertEquals("今日份 GPT 5.4 笑话", metadata.title());
         assertEquals("OpenAI - @Zhuzhuchenyan - https://i.v2ex.co/4828f6ki.png", metadata.description());
-        assertEquals("https://i.v2ex.co/4828f6ki.png", metadata.rawContent());
+        assertEquals("原标题\n今日份 GPT 5.4 笑话\n\n正文\nhttps://i.v2ex.co/4828f6ki.png", metadata.rawContent());
         assertTrue(metadata.thumbnailUrl().startsWith("generated://v2ex/title-card/"));
         assertEquals(1200, metadata.imageWidth());
         assertEquals(630, metadata.imageHeight());
@@ -132,9 +132,48 @@ class V2exPreviewProviderTest {
         PreviewMetadata metadata = provider.resolve(URI.create("https://www.v2ex.com/t/1206093"));
 
         assertTrue(metadata.thumbnailUrl().startsWith("generated://v2ex/title-card/"));
-        assertEquals("如果你在用 Planet...", metadata.rawContent());
+        assertEquals("原标题\n做个关于 macOS 26 的调查\n\n正文\n如果你在用 Planet...", metadata.rawContent());
         assertEquals(1200, metadata.imageWidth());
         assertEquals(630, metadata.imageHeight());
+    }
+
+    @Test
+    void includesTopicTitleBodyAndRepliesInRawContent() {
+        server.createContext("/api/topics/show.json", exchange -> writeJson(exchange, """
+                [{
+                  "id": 1209267,
+                  "title": "这是个赛道问题",
+                  "content": "想买一个玩玩，是放弃这个赛道了吗",
+                  "deleted": 0,
+                  "node": {"title": "Apple"},
+                  "member": {"username": "demo"}
+                }]
+                """));
+        server.createContext("/t/1209267", exchange -> writeHtml(exchange, """
+                <html>
+                <body>
+                  <div class="topic_content">
+                    想买一个玩玩，是放弃这个赛道了吗
+                  </div>
+                  <div class="reply_content">看回复说库存还在但更新少了</div>
+                  <div class="reply_content">也可能只是转向别的产品线</div>
+                </body>
+                </html>
+                """));
+
+        URI sourceUrl = URI.create("https://www.v2ex.com/t/1209267#reply81");
+        PreviewMetadata metadata = provider.enrichForAiTitle(provider.resolve(sourceUrl), sourceUrl);
+
+        assertEquals("""
+                原标题
+                这是个赛道问题
+
+                正文
+                想买一个玩玩，是放弃这个赛道了吗
+
+                回帖
+                1. 看回复说库存还在但更新少了
+                2. 也可能只是转向别的产品线""", metadata.rawContent());
     }
 
     @Test
@@ -236,6 +275,15 @@ class V2exPreviewProviderTest {
     private static void writeJson(HttpExchange exchange, String payload) throws IOException {
         byte[] body = payload.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
+        exchange.sendResponseHeaders(200, body.length);
+        try (OutputStream outputStream = exchange.getResponseBody()) {
+            outputStream.write(body);
+        }
+    }
+
+    private static void writeHtml(HttpExchange exchange, String payload) throws IOException {
+        byte[] body = payload.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
         exchange.sendResponseHeaders(200, body.length);
         try (OutputStream outputStream = exchange.getResponseBody()) {
             outputStream.write(body);

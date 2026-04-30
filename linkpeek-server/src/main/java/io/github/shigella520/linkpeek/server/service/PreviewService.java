@@ -59,10 +59,11 @@ public class PreviewService {
             }
 
             PreviewLoadResult baseResult = loadBasePreview(resolvedPreview);
-            if (!aiTitleService.supportsAiTitle(baseResult.metadata())) {
+            PreviewMetadata aiMetadata = resolvedPreview.provider().enrichForAiTitle(baseResult.metadata(), resolvedPreview.sourceUrl());
+            if (!aiTitleService.supportsAiTitle(aiMetadata)) {
                 return baseResult;
             }
-            Optional<PreviewMetadata> styledMetadata = aiTitleService.generateStyledMetadata(baseResult.metadata(), stylePrompt.get());
+            Optional<PreviewMetadata> styledMetadata = aiTitleService.generateStyledMetadata(aiMetadata, stylePrompt.get());
             if (styledMetadata.isPresent()) {
                 cacheManager.storeMetadata(styledPreviewKey, styledMetadata.get());
                 return new PreviewLoadResult(resolvedPreview, styledMetadata.get(), styledPreviewKey, false, true, true);

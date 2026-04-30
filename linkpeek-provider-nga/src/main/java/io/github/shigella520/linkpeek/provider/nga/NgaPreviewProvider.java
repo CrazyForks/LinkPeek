@@ -6,6 +6,7 @@ import io.github.shigella520.linkpeek.core.media.TitleCardRenderer;
 import io.github.shigella520.linkpeek.core.model.ContentType;
 import io.github.shigella520.linkpeek.core.model.PreviewMetadata;
 import io.github.shigella520.linkpeek.core.provider.PreviewProvider;
+import io.github.shigella520.linkpeek.core.util.PreviewRawContentFormatter;
 import io.github.shigella520.linkpeek.core.util.UrlNormalizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,6 +23,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
@@ -35,6 +38,7 @@ public class NgaPreviewProvider implements PreviewProvider {
     private static final Pattern META_OG_TITLE_PATTERN = Pattern.compile("(?is)<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"'](.*?)[\"'][^>]*>");
     private static final Pattern POST_CONTENT_PATTERN = Pattern.compile("(?is)<(?:span|div|td)\\b[^>]*(?:class=[\"'][^\"']*\\bpostcontent\\b[^\"']*[\"']|id=[\"']postcontent[^\"']*[\"'])[^>]*>(.*?)</(?:span|div|td)>");
     private static final Pattern META_DESCRIPTION_PATTERN = Pattern.compile("(?is)<meta[^>]+(?:name|property)=[\"'](?:description|og:description)[\"'][^>]+content=[\"'](.*?)[\"'][^>]*>");
+    private static final Pattern SCRIPT_STYLE_PATTERN = Pattern.compile("(?is)<(script|style)\\b[^>]*>.*?</\\1>");
     private static final Pattern TAG_PATTERN = Pattern.compile("(?is)<[^>]+>");
 
     private static final String CANONICAL_HOST = "bbs.nga.cn";
@@ -147,7 +151,7 @@ public class NgaPreviewProvider implements PreviewProvider {
                     CARD_WIDTH,
                     CARD_HEIGHT,
                     ContentType.ARTICLE,
-                    extractRawContent(html)
+                    extractRawContent(title, html)
             );
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -198,13 +202,32 @@ public class NgaPreviewProvider implements PreviewProvider {
                 .orElse("");
     }
 
-    private String extractRawContent(String html) {
-        return firstGroup(POST_CONTENT_PATTERN, html)
-                .or(() -> firstGroup(META_DESCRIPTION_PATTERN, html))
+    private String extractRawContent(String title, String html) {
+        List<String> posts = postContents(html);
+        if (!posts.isEmpty()) {
+            return buildRawContent(title, posts.get(0), posts.subList(1, posts.size()));
+        }
+        String fallbackContent = firstGroup(META_DESCRIPTION_PATTERN, html)
                 .map(this::stripTags)
                 .map(this::cleanText)
-                .map(value -> summarize(value, MAX_RAW_CONTENT_LENGTH))
                 .orElse("");
+        return buildRawContent(title, fallbackContent, List.of());
+    }
+
+    private List<String> postContents(String html) {
+        List<String> posts = new ArrayList<>();
+        Matcher matcher = POST_CONTENT_PATTERN.matcher(html);
+        while (matcher.find()) {
+            String text = cleanText(stripTags(matcher.group(1)));
+            if (!text.isBlank()) {
+                posts.add(text);
+            }
+        }
+        return posts;
+    }
+
+    private String buildRawContent(String title, String body, List<String> replies) {
+        return PreviewRawContentFormatter.format(title, body, replies, MAX_RAW_CONTENT_LENGTH);
     }
 
     private Optional<String> firstGroup(Pattern pattern, String value) {
@@ -242,7 +265,11 @@ public class NgaPreviewProvider implements PreviewProvider {
         if (value == null || value.isBlank()) {
             return "";
         }
-        String withBreaks = value.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n");
+        String withoutScripts = SCRIPT_STYLE_PATTERN.matcher(value).replaceAll(" ");
+        String withBreaks = withoutScripts
+                .replaceAll("(?i)<br\\s*/?>", "\n")
+                .replaceAll("(?i)</p>", "\n")
+                .replaceAll("(?i)</li>", "\n");
         return TAG_PATTERN.matcher(withBreaks)
                 .replaceAll(" ")
                 .replace("&nbsp;", " ")
