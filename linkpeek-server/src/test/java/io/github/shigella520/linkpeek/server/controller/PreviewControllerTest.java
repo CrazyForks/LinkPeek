@@ -1,5 +1,6 @@
 package io.github.shigella520.linkpeek.server.controller;
 
+import io.github.shigella520.linkpeek.core.error.UpstreamFetchException;
 import io.github.shigella520.linkpeek.core.model.ContentType;
 import io.github.shigella520.linkpeek.core.model.PreviewKey;
 import io.github.shigella520.linkpeek.core.model.PreviewMetadata;
@@ -682,6 +683,20 @@ class PreviewControllerTest {
     }
 
     @Test
+    void thumbnailEndpointReturnsBadGatewayWhenProviderFails() throws Exception {
+        mockMvc.perform(get("/preview")
+                        .param("url", "https://video.example.com/watch/abc")
+                        .header(HttpHeaders.USER_AGENT, "facebookexternalhit/1.1"))
+                .andExpect(status().isOk());
+
+        testPreviewProvider.thumbnailFails.set(true);
+
+        mockMvc.perform(get("/media/thumb/{previewKey}.jpg", key().value()))
+                .andExpect(status().isBadGateway())
+                .andExpect(content().string(containsString("Thumbnail failed")));
+    }
+
+    @Test
     void videoEndpointReturnsNotImplemented() throws Exception {
         mockMvc.perform(get("/media/video/{previewKey}.mp4", key().value()))
                 .andExpect(status().isNotImplemented());
@@ -766,12 +781,14 @@ class PreviewControllerTest {
         private final AtomicInteger canonicalizations = new AtomicInteger();
         private final AtomicInteger resolutions = new AtomicInteger();
         private final java.util.concurrent.atomic.AtomicBoolean generatedTextCard = new java.util.concurrent.atomic.AtomicBoolean();
+        private final java.util.concurrent.atomic.AtomicBoolean thumbnailFails = new java.util.concurrent.atomic.AtomicBoolean();
 
         void reset() {
             thumbnailDownloads.set(0);
             canonicalizations.set(0);
             resolutions.set(0);
             generatedTextCard.set(false);
+            thumbnailFails.set(false);
         }
 
         @Override
@@ -812,6 +829,9 @@ class PreviewControllerTest {
         @Override
         public Path downloadThumbnail(PreviewMetadata metadata, Path targetPath) throws IOException {
             thumbnailDownloads.incrementAndGet();
+            if (thumbnailFails.get()) {
+                throw new UpstreamFetchException("Thumbnail failed");
+            }
             Files.createDirectories(targetPath.getParent());
             Files.writeString(targetPath, "thumb-data");
             return targetPath;
