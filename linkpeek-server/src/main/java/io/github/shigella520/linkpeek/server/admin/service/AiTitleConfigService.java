@@ -11,8 +11,9 @@ import java.time.Instant;
 public class AiTitleConfigService {
     public static final String PROVIDER_AI_TITLE = "ai_title";
     public static final String TITLE_FORMAT_PROMPT_KEY = "title_format_prompt";
-    public static final String DEFAULT_TITLE_FORMAT_PROMPT = "以此为标准，生成一段大于15中文字符，小于30个中文字符，客观，辩证的标题。"
-            + "\n\n输出格式要求：只返回一行中文标题文本，不要解释、不要 JSON、不要 Markdown、不要引号、不要换行。";
+    public static final String DEFAULT_TITLE_FORMAT_PROMPT = "你将收到两段输入：第一段是标题风格要求，第二段是待总结原文。请严格依据标题风格要求，总结待总结原文。"
+            + "以此为标准，生成一段大于15中文字符，小于30个中文字符，客观，辩证的标题。"
+            + "输出格式要求：只返回一行中文标题文本，不要解释、不要JSON、不要Markdown、不要引号、不要换行。";
 
     private final ProviderConfigMapper providerConfigMapper;
     private final Clock clock;

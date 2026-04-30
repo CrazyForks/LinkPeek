@@ -38,7 +38,7 @@
                     </div>
                     <form id="ai-title-config-form" class="config-form">
                         <label>
-                            <textarea id="ai-title-format-prompt" rows="4" placeholder="以此为标准，生成一段大于15中文字符，小于30个中文字符，客观，辩证的标题。&#10;&#10;输出格式要求：只返回一行中文标题文本，不要解释、不要 JSON、不要 Markdown、不要引号、不要换行。"></textarea>
+                            <textarea id="ai-title-format-prompt" rows="4" placeholder="你将收到两段输入：第一段是标题风格要求，第二段是待总结原文。请严格依据标题风格要求，总结待总结原文。以此为标准，生成一段大于15中文字符，小于30个中文字符，客观，辩证的标题。输出格式要求：只返回一行中文标题文本，不要解释、不要JSON、不要Markdown、不要引号、不要换行。"></textarea>
                             <span class="field-hint">作为 system 提示词发送。Style Prompt 和 Raw Content 会通过独立 user 消息发送，Raw Content 永远在最后。</span>
                         </label>
                         <div class="form-actions">
