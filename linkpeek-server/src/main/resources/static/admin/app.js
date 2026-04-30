@@ -2,6 +2,7 @@
     const state = {
         prompts: [],
         aiProviders: [],
+        defaultOutputConstraint: "",
         logRefreshTimer: null
     };
 
@@ -9,6 +10,7 @@
         bindLogout();
         bindPurge();
         bindPromptForm();
+        bindAiTitleConfig();
         bindProviderForm();
         bindAiForm();
         bindLogs();
@@ -73,6 +75,29 @@
             }
         });
     }
+
+    function bindAiTitleConfig() {
+        document.getElementById("ai-title-config-form").addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const outputConstraint = document.getElementById("ai-output-constraint").value.trim();
+            setFeedback("ai-title-config-feedback", "正在保存输出格式要求...", "");
+            try {
+                await fetchJson("/api/admin/ai-title-config", {
+                    method: "PUT",
+                    body: JSON.stringify({outputConstraint})
+                });
+                await loadAiTitleConfig();
+                setFeedback("ai-title-config-feedback", "输出格式要求已保存。", "is-success");
+            } catch (error) {
+                setFeedback("ai-title-config-feedback", error.message, "is-error");
+            }
+        });
+        document.getElementById("ai-output-constraint-default-button").addEventListener("click", () => {
+            document.getElementById("ai-output-constraint").value = state.defaultOutputConstraint || "";
+            setFeedback("ai-title-config-feedback", "已填入默认输出格式要求，保存后生效。", "");
+        });
+    }
+
 
     function bindProviderForm() {
         document.getElementById("provider-form").addEventListener("submit", async (event) => {
@@ -172,12 +197,18 @@
     }
 
     async function loadAll() {
-        await Promise.all([loadPrompts(), loadProviderConfig(), loadAiProviders(), loadLogs()]);
+        await Promise.all([loadPrompts(), loadAiTitleConfig(), loadProviderConfig(), loadAiProviders(), loadLogs()]);
     }
 
     async function loadPrompts() {
         state.prompts = await fetchJson("/api/admin/prompts");
         renderPrompts();
+    }
+
+    async function loadAiTitleConfig() {
+        const payload = await fetchJson("/api/admin/ai-title-config");
+        state.defaultOutputConstraint = payload.defaultOutputConstraint || "";
+        document.getElementById("ai-output-constraint").value = payload.outputConstraint || "";
     }
 
     async function loadProviderConfig() {

@@ -5,8 +5,9 @@ import io.github.shigella520.linkpeek.core.model.ContentType;
 import io.github.shigella520.linkpeek.core.model.PreviewKey;
 import io.github.shigella520.linkpeek.core.model.PreviewMetadata;
 import io.github.shigella520.linkpeek.core.provider.PreviewProvider;
-import io.github.shigella520.linkpeek.server.admin.service.ProviderConfigService;
 import io.github.shigella520.linkpeek.server.admin.model.AiProviderRecord;
+import io.github.shigella520.linkpeek.server.admin.service.AiTitleConfigService;
+import io.github.shigella520.linkpeek.server.admin.service.ProviderConfigService;
 import io.github.shigella520.linkpeek.server.ai.AiTitleClient;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterAll;
@@ -229,6 +230,8 @@ class PreviewControllerTest {
                 .andExpect(content().string(containsString("ai-api-kind")))
                 .andExpect(content().string(containsString("https://api.openai.com/v1")))
                 .andExpect(content().string(containsString("prompt-modal")))
+                .andExpect(content().string(containsString("ai-title-config-form")))
+                .andExpect(content().string(containsString("ai-output-constraint")))
                 .andExpect(content().string(containsString("ai-modal")))
                 .andExpect(content().string(not(containsString("side-nav"))))
                 .andExpect(result -> {
@@ -261,7 +264,8 @@ class PreviewControllerTest {
         mockMvc.perform(get("/admin/app.js"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(org.springframework.http.MediaType.valueOf("application/javascript")))
-                .andExpect(content().string(containsString("/api/admin/logs")));
+                .andExpect(content().string(containsString("/api/admin/logs")))
+                .andExpect(content().string(containsString("/api/admin/ai-title-config")));
 
         mockMvc.perform(get("/admin/login.js"))
                 .andExpect(status().isOk())
@@ -608,6 +612,9 @@ class PreviewControllerTest {
         mockMvc.perform(get("/api/admin/logs"))
                 .andExpect(status().isUnauthorized());
 
+        mockMvc.perform(get("/api/admin/ai-title-config"))
+                .andExpect(status().isUnauthorized());
+
         org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM stats_event", Integer.class));
         org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM stats_link", Integer.class));
     }
@@ -668,6 +675,19 @@ class PreviewControllerTest {
                         .cookie(cookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].style").value("fun"));
+
+        mockMvc.perform(get("/api/admin/ai-title-config")
+                        .cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outputConstraint").value(AiTitleConfigService.DEFAULT_OUTPUT_CONSTRAINT))
+                .andExpect(jsonPath("$.defaultOutputConstraint").value(AiTitleConfigService.DEFAULT_OUTPUT_CONSTRAINT));
+
+        mockMvc.perform(put("/api/admin/ai-title-config")
+                        .cookie(cookie)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"outputConstraint\":\"以此为标准，生成一段大于15中文字符，小于30个中文字符，客观，辩证的标题。\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outputConstraint").value("以此为标准，生成一段大于15中文字符，小于30个中文字符，客观，辩证的标题。"));
 
         mockMvc.perform(put("/api/admin/provider-config/linuxdo")
                         .cookie(cookie)

@@ -262,7 +262,16 @@ textarea:focus {
 
 .form-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 10px;
+}
+
+.config-form {
+    display: grid;
+    gap: 12px;
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
 }
 
 .modal-shell {

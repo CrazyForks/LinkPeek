@@ -43,6 +43,18 @@
                         <tbody id="prompt-table"></tbody>
                     </table>
                 </div>
+                <form id="ai-title-config-form" class="config-form">
+                    <label>
+                        <span>统一输出格式要求</span>
+                        <textarea id="ai-output-constraint" rows="4" placeholder="以此为标准，生成一段大于15中文字符，小于30个中文字符，客观，辩证的标题。&#10;&#10;输出格式要求：只返回一行中文标题文本，不要解释、不要 JSON、不要 Markdown、不要引号、不要换行。"></textarea>
+                        <span class="field-hint">每次 AI 标题总结都会追加在 style 提示词和原文之后。留空保存时将不追加统一输出要求。</span>
+                    </label>
+                    <div class="form-actions">
+                        <button type="submit">保存输出格式要求</button>
+                        <button type="button" class="secondary" id="ai-output-constraint-default-button">使用默认要求</button>
+                    </div>
+                    <p id="ai-title-config-feedback" class="feedback" role="status" aria-live="polite"></p>
+                </form>
             </section>
 
             <section class="panel" id="ai-providers">

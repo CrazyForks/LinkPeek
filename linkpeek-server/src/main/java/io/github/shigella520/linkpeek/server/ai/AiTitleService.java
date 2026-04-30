@@ -7,6 +7,7 @@ import io.github.shigella520.linkpeek.server.admin.model.AdminPromptRecord;
 import io.github.shigella520.linkpeek.server.admin.model.AiProviderRecord;
 import io.github.shigella520.linkpeek.server.admin.persistence.AdminPromptMapper;
 import io.github.shigella520.linkpeek.server.admin.persistence.AiProviderMapper;
+import io.github.shigella520.linkpeek.server.admin.service.AiTitleConfigService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -27,22 +28,25 @@ public class AiTitleService {
     private static final Logger log = LoggerFactory.getLogger(AiTitleService.class);
 
     public static final String RAW_CONTENT_PLACEHOLDER = "{raw_content}";
-    public static final String OUTPUT_CONSTRAINT = "输出格式要求：只返回一行中文标题文本，不要解释、不要 JSON、不要 Markdown、不要引号、不要换行。";
+    public static final String OUTPUT_CONSTRAINT = AiTitleConfigService.DEFAULT_OUTPUT_CONSTRAINT;
     private static final Pattern STYLE_PATTERN = Pattern.compile("^[A-Za-z0-9._-]{1,64}$");
     private static final int MAX_TITLE_CODE_POINTS = 120;
 
     private final AdminPromptMapper adminPromptMapper;
     private final AiProviderMapper aiProviderMapper;
     private final AiTitleClient aiTitleClient;
+    private final AiTitleConfigService aiTitleConfigService;
 
     public AiTitleService(
             AdminPromptMapper adminPromptMapper,
             AiProviderMapper aiProviderMapper,
-            AiTitleClient aiTitleClient
+            AiTitleClient aiTitleClient,
+            AiTitleConfigService aiTitleConfigService
     ) {
         this.adminPromptMapper = adminPromptMapper;
         this.aiProviderMapper = aiProviderMapper;
         this.aiTitleClient = aiTitleClient;
+        this.aiTitleConfigService = aiTitleConfigService;
     }
 
     public Optional<StylePrompt> resolveStylePrompt(String style) {
@@ -57,7 +61,13 @@ public class AiTitleService {
         if (prompt == null || !StringUtils.hasText(prompt.getPrompt())) {
             return Optional.empty();
         }
-        return Optional.of(new StylePrompt(normalizedStyle, prompt.getPrompt().strip(), sha256(prompt.getPrompt())));
+        String outputConstraint = outputConstraint();
+        return Optional.of(new StylePrompt(
+                normalizedStyle,
+                prompt.getPrompt().strip(),
+                outputConstraint,
+                sha256(prompt.getPrompt().strip() + "\n\n" + outputConstraint)
+        ));
     }
 
     public PreviewKey styledPreviewKey(URI canonicalUrl, StylePrompt stylePrompt) {
@@ -78,7 +88,7 @@ public class AiTitleService {
             return Optional.empty();
         }
 
-        String prompt = buildPrompt(stylePrompt.prompt(), metadata.rawContent());
+        String prompt = buildPrompt(stylePrompt.prompt(), metadata.rawContent(), stylePrompt.outputConstraint());
         List<AiProviderRecord> providers = aiProviderMapper.selectEnabledProviders();
         for (AiProviderRecord provider : providers) {
             try {
@@ -106,6 +116,10 @@ public class AiTitleService {
     }
 
     public String buildPrompt(String promptTemplate, String rawContent) {
+        return buildPrompt(promptTemplate, rawContent, outputConstraint());
+    }
+
+    public String buildPrompt(String promptTemplate, String rawContent, String outputConstraint) {
         String content = rawContent == null ? "" : rawContent.strip();
         String body;
         if (promptTemplate.contains(RAW_CONTENT_PLACEHOLDER)) {
@@ -113,7 +127,11 @@ public class AiTitleService {
         } else {
             body = promptTemplate.stripTrailing() + "\n\n原文内容：\n" + content;
         }
-        return body.stripTrailing() + "\n\n" + OUTPUT_CONSTRAINT;
+        String constraint = outputConstraint == null ? "" : outputConstraint.strip();
+        if (!StringUtils.hasText(constraint)) {
+            return body.stripTrailing();
+        }
+        return body.stripTrailing() + "\n\n" + constraint;
     }
 
     public String cleanTitle(String rawTitle) {
@@ -199,6 +217,10 @@ public class AiTitleService {
         }
     }
 
-    public record StylePrompt(String style, String prompt, String promptHash) {
+    private String outputConstraint() {
+        return aiTitleConfigService == null ? OUTPUT_CONSTRAINT : aiTitleConfigService.outputConstraint();
+    }
+
+    public record StylePrompt(String style, String prompt, String outputConstraint, String promptHash) {
     }
 }

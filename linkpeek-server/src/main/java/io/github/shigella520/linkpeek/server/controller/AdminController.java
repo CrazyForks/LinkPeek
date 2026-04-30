@@ -5,6 +5,7 @@ import io.github.shigella520.linkpeek.server.admin.model.AiProviderRecord;
 import io.github.shigella520.linkpeek.server.admin.persistence.AdminPromptMapper;
 import io.github.shigella520.linkpeek.server.admin.persistence.AiProviderMapper;
 import io.github.shigella520.linkpeek.server.admin.service.AdminAuthService;
+import io.github.shigella520.linkpeek.server.admin.service.AiTitleConfigService;
 import io.github.shigella520.linkpeek.server.admin.service.ProviderConfigService;
 import io.github.shigella520.linkpeek.server.admin.service.ServiceLogService;
 import io.github.shigella520.linkpeek.server.ai.AiApiKind;
@@ -45,6 +46,7 @@ public class AdminController {
 
     private final AdminAuthService adminAuthService;
     private final AdminPromptMapper adminPromptMapper;
+    private final AiTitleConfigService aiTitleConfigService;
     private final ProviderConfigService providerConfigService;
     private final AiProviderMapper aiProviderMapper;
     private final AiTitleClient aiTitleClient;
@@ -55,6 +57,7 @@ public class AdminController {
     public AdminController(
             AdminAuthService adminAuthService,
             AdminPromptMapper adminPromptMapper,
+            AiTitleConfigService aiTitleConfigService,
             ProviderConfigService providerConfigService,
             AiProviderMapper aiProviderMapper,
             AiTitleClient aiTitleClient,
@@ -64,6 +67,7 @@ public class AdminController {
     ) {
         this.adminAuthService = adminAuthService;
         this.adminPromptMapper = adminPromptMapper;
+        this.aiTitleConfigService = aiTitleConfigService;
         this.providerConfigService = providerConfigService;
         this.aiProviderMapper = aiProviderMapper;
         this.aiTitleClient = aiTitleClient;
@@ -144,6 +148,24 @@ public class AdminController {
     public DeleteResponse deletePrompt(HttpServletRequest request, @PathVariable String style) {
         adminAuthService.requireAuthenticated(request);
         return new DeleteResponse(adminPromptMapper.deletePrompt(normalizeStyle(style)));
+    }
+
+    @GetMapping("/ai-title-config")
+    public AiTitleConfigService.AiTitleConfigResponse aiTitleConfig(HttpServletRequest request) {
+        adminAuthService.requireAuthenticated(request);
+        return aiTitleConfigService.config();
+    }
+
+    @PutMapping("/ai-title-config")
+    public AiTitleConfigService.AiTitleConfigResponse saveAiTitleConfig(
+            HttpServletRequest request,
+            @RequestBody AiTitleConfigRequest configRequest
+    ) {
+        adminAuthService.requireAuthenticated(request);
+        if (configRequest == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "AI title config payload is required.");
+        }
+        return aiTitleConfigService.saveOutputConstraint(configRequest.outputConstraint());
     }
 
     @GetMapping("/provider-config")
@@ -291,6 +313,9 @@ public class AdminController {
     }
 
     public record PromptRequest(String prompt) {
+    }
+
+    public record AiTitleConfigRequest(String outputConstraint) {
     }
 
     public record ProviderConfigRequest(Map<String, String> values) {
