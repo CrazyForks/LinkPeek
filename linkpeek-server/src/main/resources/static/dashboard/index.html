@@ -112,6 +112,16 @@
                     <strong id="open-count">0</strong>
                     <em id="open-count-trend">-</em>
                 </div>
+                <div class="floating-chip floating-chip-ai-render">
+                    <span>AI 渲染比率</span>
+                    <strong id="ai-render-ratio">0%</strong>
+                    <em>渲染 / 请求</em>
+                </div>
+                <div class="floating-chip floating-chip-ai-requested">
+                    <span>AI 请求数</span>
+                    <strong id="ai-requested-count">0</strong>
+                    <em id="ai-rendered-count">已渲染 0</em>
+                </div>
                 <div class="floating-chip floating-chip-accent">
                     <span>预览成功率</span>
                     <strong id="preview-success-rate">0%</strong>
@@ -129,11 +139,7 @@
                         <strong id="new-link-count">0</strong>
                         <span id="new-link-count-trend">-</span>
                     </article>
-                    <article class="glass-card glass-card-tint-peach hero-metric">
-                        <p>创建率</p>
-                        <strong id="create-rate">0%</strong>
-                        <span>预览请求转化</span>
-                    </article>
+                    <div class="hero-metric-spacer" aria-hidden="true"></div>
                     <article class="glass-card glass-card-tint-lilac hero-metric">
                         <p>打开 / 创建比</p>
                         <strong id="open-create-ratio">0%</strong>
@@ -212,8 +218,8 @@
                             <strong id="preview-success-rate-inline">0%</strong>
                         </div>
                         <div class="funnel-pill">
-                            <span>创建率</span>
-                            <strong id="create-rate-inline">0%</strong>
+                            <span>AI 请求数</span>
+                            <strong id="ai-requested-count-inline">0</strong>
                         </div>
                         <div class="funnel-pill">
                             <span>打开 / 创建比</span>

@@ -309,10 +309,12 @@
 
         setText("preview-success-rate", formatRatio(payload.funnel.previewSuccessRate));
         setText("preview-success-rate-inline", formatRatio(payload.funnel.previewSuccessRate));
-        setText("create-rate", formatRatio(payload.funnel.createRate));
-        setText("create-rate-inline", formatRatio(payload.funnel.createRate));
         setText("open-create-ratio", formatRatio(payload.funnel.openCreateRatio));
         setText("open-create-ratio-inline", formatRatio(payload.funnel.openCreateRatio));
+        animateValue("ai-requested-count", payload.funnel.aiRequestedCount);
+        animateValue("ai-requested-count-inline", payload.funnel.aiRequestedCount);
+        setText("ai-rendered-count", `已渲染 ${numberFormatter.format(payload.funnel.aiSucceededCount)}`);
+        setText("ai-render-ratio", formatRatio(payload.funnel.aiSuccessRate));
         setText("ai-render-rate-inline", formatRatio(payload.funnel.aiRenderRate));
         setText("ai-success-rate-inline", formatRatio(payload.funnel.aiSuccessRate));
 
