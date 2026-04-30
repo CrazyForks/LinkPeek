@@ -57,6 +57,7 @@ public class DashboardController {
                     .build();
         }
         return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
                 .contentType(MediaType.TEXT_HTML)
                 .body(new ClassPathResource("static/admin/index.html"));
     }
@@ -65,6 +66,7 @@ public class DashboardController {
     @Hidden
     public ResponseEntity<Resource> adminLogin() {
         return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
                 .contentType(MediaType.TEXT_HTML)
                 .body(new ClassPathResource("static/admin/login.html"));
     }

@@ -23,6 +23,7 @@ body {
     background: var(--bg);
     color: var(--text);
     font-family: "Avenir Next", "SF Pro Display", "PingFang SC", sans-serif;
+    overflow-x: hidden;
 }
 
 body.modal-open {
@@ -127,6 +128,7 @@ button:disabled {
 
 main {
     width: min(1280px, calc(100vw - 40px));
+    min-width: 0;
     margin: 24px auto 56px;
 }
 
@@ -172,14 +174,17 @@ main {
 
 .admin-shell {
     display: block;
+    min-width: 0;
 }
 
 .workspace {
     display: grid;
     gap: 18px;
+    min-width: 0;
 }
 
 .panel {
+    min-width: 0;
     padding: 22px;
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -188,10 +193,16 @@ main {
 
 .panel-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: flex-start;
     justify-content: space-between;
     gap: 16px;
     margin-bottom: 16px;
+}
+
+.panel-head > *,
+.subsection-head > * {
+    min-width: 0;
 }
 
 .description,
@@ -216,6 +227,7 @@ main {
 label {
     display: grid;
     gap: 7px;
+    min-width: 0;
 }
 
 label span,
@@ -244,7 +256,12 @@ textarea {
 }
 
 textarea {
+    min-width: 0;
+    max-width: 100%;
     resize: vertical;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
 }
 
 input:focus,
@@ -274,10 +291,12 @@ textarea:focus {
 .config-form {
     display: grid;
     gap: 12px;
+    min-width: 0;
     margin-top: 18px;
 }
 
 .prompt-subsection {
+    min-width: 0;
     margin-top: 22px;
     padding-top: 18px;
     border-top: 1px solid var(--line);
@@ -291,6 +310,7 @@ textarea:focus {
 
 .subsection-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
@@ -414,6 +434,8 @@ fieldset {
 }
 
 .table-shell {
+    min-width: 0;
+    max-width: 100%;
     margin-top: 18px;
     overflow-x: auto;
     border: 1px solid var(--line);
@@ -433,6 +455,7 @@ td {
     text-align: left;
     vertical-align: top;
     font-size: 14px;
+    overflow-wrap: anywhere;
 }
 
 tr:last-child td {
@@ -448,11 +471,13 @@ td .row-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+    min-width: max-content;
 }
 
 .prompt-preview {
     display: -webkit-box;
     max-width: 680px;
+    min-width: 0;
     overflow: hidden;
     color: var(--muted);
     line-height: 1.5;
