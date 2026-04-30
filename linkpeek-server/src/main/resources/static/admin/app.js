@@ -1,7 +1,8 @@
 (function () {
     const state = {
         prompts: [],
-        aiProviders: []
+        aiProviders: [],
+        logRefreshTimer: null
     };
 
     function init() {
@@ -10,6 +11,7 @@
         bindPromptForm();
         bindProviderForm();
         bindAiForm();
+        bindLogs();
         bindModalClose();
         checkSession();
     }
@@ -135,6 +137,14 @@
         });
     }
 
+    function bindLogs() {
+        document.getElementById("log-form").addEventListener("submit", async (event) => {
+            event.preventDefault();
+            await loadLogs();
+        });
+        document.getElementById("log-auto-refresh").addEventListener("change", updateLogAutoRefresh);
+    }
+
     function bindModalClose() {
         document.querySelectorAll("[data-close-modal]").forEach((node) => {
             node.addEventListener("click", () => {
@@ -162,7 +172,7 @@
     }
 
     async function loadAll() {
-        await Promise.all([loadPrompts(), loadProviderConfig(), loadAiProviders()]);
+        await Promise.all([loadPrompts(), loadProviderConfig(), loadAiProviders(), loadLogs()]);
     }
 
     async function loadPrompts() {
@@ -181,6 +191,27 @@
     async function loadAiProviders() {
         state.aiProviders = await fetchJson("/api/admin/ai-providers");
         renderAiProviders();
+    }
+
+    async function loadLogs() {
+        const params = new URLSearchParams();
+        params.set("lines", document.getElementById("log-lines").value || "300");
+        const level = document.getElementById("log-level").value;
+        const query = document.getElementById("log-query").value.trim();
+        if (level) {
+            params.set("level", level);
+        }
+        if (query) {
+            params.set("q", query);
+        }
+
+        setFeedback("log-feedback", "正在读取服务日志...", "");
+        try {
+            const result = await fetchJson(`/api/admin/logs?${params.toString()}`);
+            renderLogs(result);
+        } catch (error) {
+            setFeedback("log-feedback", error.message, "is-error");
+        }
     }
 
     function renderPrompts() {
@@ -272,9 +303,18 @@
             button.classList.toggle("is-error", !result.success);
             button.textContent = result.success ? "成功" : "失败";
             button.title = result.message || "";
-            const duration = typeof result.durationMs === "number" ? `，耗时 ${result.durationMs}ms` : "";
-            const output = result.output ? `，返回：${result.output}` : "";
-            setFeedback("ai-feedback", `${result.message || (result.success ? "测试成功。" : "测试失败。")}${duration}${output}`, result.success ? "is-success" : "is-error");
+            const message = result.message || (result.success ? "测试成功。" : "测试失败。");
+            const details = [];
+            if (typeof result.durationMs === "number") {
+                details.push(`耗时 ${result.durationMs}ms`);
+            }
+            if (result.output) {
+                details.push(`返回：${result.output}`);
+            }
+            const feedback = details.length > 0
+                    ? `${trimTrailingPunctuation(message)}，${details.join("，")}`
+                    : message;
+            setFeedback("ai-feedback", feedback, result.success ? "is-success" : "is-error");
         } catch (error) {
             button.classList.add("is-error");
             button.textContent = "失败";
@@ -282,6 +322,34 @@
             setFeedback("ai-feedback", error.message, "is-error");
         } finally {
             button.disabled = false;
+        }
+    }
+
+    function renderLogs(result) {
+        const output = document.getElementById("log-output");
+        const meta = document.getElementById("log-meta");
+        const lines = Array.isArray(result.lines) ? result.lines : [];
+        meta.textContent = `路径：${result.path || ""} · 大小：${formatBytes(result.sizeBytes || 0)} · 更新：${formatTimestamp(result.modifiedAt)}`;
+
+        if (!result.exists) {
+            output.textContent = "";
+            setFeedback("log-feedback", "日志文件不存在或不可读。", "is-error");
+            return;
+        }
+
+        output.textContent = lines.length ? lines.join("\n") : "没有匹配日志。";
+        output.scrollTop = output.scrollHeight;
+        const truncated = result.truncated ? "，已截断" : "";
+        setFeedback("log-feedback", `已加载 ${lines.length} 行${truncated}。`, "is-success");
+    }
+
+    function updateLogAutoRefresh() {
+        if (state.logRefreshTimer) {
+            window.clearInterval(state.logRefreshTimer);
+            state.logRefreshTimer = null;
+        }
+        if (document.getElementById("log-auto-refresh").checked) {
+            state.logRefreshTimer = window.setInterval(loadLogs, 5000);
         }
     }
 
@@ -438,6 +506,28 @@
         const node = document.getElementById(id);
         node.textContent = message || "";
         node.className = `feedback ${className || ""}`.trim();
+    }
+
+    function trimTrailingPunctuation(value) {
+        return String(value ?? "").replace(/[。.!！?？,，;；:：]+$/u, "");
+    }
+
+    function formatTimestamp(value) {
+        if (!value) {
+            return "n/a";
+        }
+        return new Date(value).toLocaleString();
+    }
+
+    function formatBytes(value) {
+        const bytes = Number(value || 0);
+        if (bytes < 1024) {
+            return `${bytes} B`;
+        }
+        if (bytes < 1024 * 1024) {
+            return `${(bytes / 1024).toFixed(1)} KB`;
+        }
+        return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
     }
 
     function promptPreview(value) {

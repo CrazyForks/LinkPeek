@@ -111,6 +111,50 @@
                 <p id="provider-feedback" class="feedback" role="status" aria-live="polite"></p>
             </section>
 
+            <section class="panel" id="service-logs">
+                <div class="panel-head">
+                    <div>
+                        <p class="panel-kicker">Logs</p>
+                        <h2>服务日志</h2>
+                    </div>
+                    <button type="submit" form="log-form">刷新日志</button>
+                </div>
+                <form id="log-form" class="log-controls">
+                    <label>
+                        <span>行数</span>
+                        <select id="log-lines">
+                            <option value="100">100</option>
+                            <option value="300" selected>300</option>
+                            <option value="500">500</option>
+                            <option value="1000">1000</option>
+                            <option value="2000">2000</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>级别</span>
+                        <select id="log-level">
+                            <option value="">全部</option>
+                            <option value="ERROR">ERROR</option>
+                            <option value="WARN">WARN</option>
+                            <option value="INFO">INFO</option>
+                            <option value="DEBUG">DEBUG</option>
+                            <option value="TRACE">TRACE</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>关键词</span>
+                        <input id="log-query" type="search" placeholder="requestId / previewKey / error" autocomplete="off">
+                    </label>
+                    <label class="checkbox-row log-auto-refresh">
+                        <input id="log-auto-refresh" type="checkbox">
+                        <span>自动刷新</span>
+                    </label>
+                </form>
+                <p id="log-feedback" class="feedback" role="status" aria-live="polite"></p>
+                <p id="log-meta" class="log-meta"></p>
+                <pre id="log-output" class="log-output" aria-label="服务日志"></pre>
+            </section>
+
             <section class="panel" id="purge">
                 <div class="panel-head">
                     <div>

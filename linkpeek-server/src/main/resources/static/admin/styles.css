@@ -330,6 +330,41 @@ textarea:focus {
     gap: 16px;
 }
 
+.log-controls {
+    display: grid;
+    grid-template-columns: 140px 160px minmax(220px, 1fr) auto;
+    align-items: end;
+    gap: 14px;
+}
+
+.log-auto-refresh {
+    min-height: 44px;
+}
+
+.log-meta {
+    margin: 8px 0 10px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.log-output {
+    width: 100%;
+    height: min(560px, 58vh);
+    margin: 0;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px;
+    background: #0f1720;
+    color: #e6edf3;
+    font-family: "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    white-space: pre;
+}
+
 fieldset {
     display: grid;
     gap: 12px;
@@ -411,7 +446,8 @@ td button {
     }
 
     .grid-form,
-    .provider-grid {
+    .provider-grid,
+    .log-controls {
         grid-template-columns: 1fr;
     }
 }

@@ -54,6 +54,7 @@ class PreviewControllerTest {
     private static final Path TEST_STATS_DIR;
     private static final Path TEST_STATS_DB;
     private static final Path TEST_WEB_ICON;
+    private static final Path TEST_SERVICE_LOG;
 
     static {
         try {
@@ -61,6 +62,7 @@ class PreviewControllerTest {
             TEST_STATS_DIR = Files.createTempDirectory("linkpeek-server-stats");
             TEST_STATS_DB = TEST_STATS_DIR.resolve("linkpeek-test.db");
             TEST_WEB_ICON = TEST_STATS_DIR.resolve("favicon.svg");
+            TEST_SERVICE_LOG = TEST_STATS_DIR.resolve("service.log");
             writeTestWebIcon();
         } catch (IOException exception) {
             throw new ExceptionInInitializerError(exception);
@@ -74,6 +76,8 @@ class PreviewControllerTest {
         registry.add("linkpeek.base-url", () -> "https://preview.example.com");
         registry.add("linkpeek.web-icon-path", () -> TEST_WEB_ICON.toString());
         registry.add("linkpeek.stats-admin-password", () -> "test-admin-password");
+        registry.add("linkpeek.service-log-path", () -> TEST_SERVICE_LOG.toString());
+        registry.add("logging.file.name", () -> TEST_STATS_DIR.resolve("spring-test.log").toString());
         registry.add("management.endpoints.web.exposure.include", () -> "health");
     }
 
@@ -106,6 +110,7 @@ class PreviewControllerTest {
                 });
         Files.createDirectories(TEST_CACHE_DIR);
         writeTestWebIcon();
+        Files.deleteIfExists(TEST_SERVICE_LOG);
         jdbcTemplate.execute("DELETE FROM stats_event");
         jdbcTemplate.execute("DELETE FROM stats_link");
         jdbcTemplate.execute("DELETE FROM admin_prompt");
@@ -218,6 +223,7 @@ class PreviewControllerTest {
                 .andExpect(content().contentTypeCompatibleWith(org.springframework.http.MediaType.TEXT_HTML))
                 .andExpect(content().string(containsString("LinkPeek Admin")))
                 .andExpect(content().string(containsString("provider-config")))
+                .andExpect(content().string(containsString("service-logs")))
                 .andExpect(content().string(containsString("ai-providers")))
                 .andExpect(content().string(containsString("ai-new-button")))
                 .andExpect(content().string(containsString("ai-api-kind")))
@@ -230,9 +236,15 @@ class PreviewControllerTest {
                     int promptIndex = html.indexOf("id=\"prompts\"");
                     int aiIndex = html.indexOf("id=\"ai-providers\"");
                     int providerIndex = html.indexOf("id=\"provider-config\"");
+                    int logsIndex = html.indexOf("id=\"service-logs\"");
+                    int purgeIndex = html.indexOf("id=\"purge\"");
                     org.junit.jupiter.api.Assertions.assertTrue(
-                            promptIndex >= 0 && promptIndex < aiIndex && aiIndex < providerIndex,
-                            "Expected admin module order: prompts, AI providers, provider config."
+                            promptIndex >= 0
+                                    && promptIndex < aiIndex
+                                    && aiIndex < providerIndex
+                                    && providerIndex < logsIndex
+                                    && logsIndex < purgeIndex,
+                            "Expected admin module order: prompts, AI providers, provider config, service logs, purge."
                     );
                 });
 
@@ -248,7 +260,8 @@ class PreviewControllerTest {
 
         mockMvc.perform(get("/admin/app.js"))
                 .andExpect(status().isOk())
-                .andExpect(content().contentTypeCompatibleWith(org.springframework.http.MediaType.valueOf("application/javascript")));
+                .andExpect(content().contentTypeCompatibleWith(org.springframework.http.MediaType.valueOf("application/javascript")))
+                .andExpect(content().string(containsString("/api/admin/logs")));
 
         mockMvc.perform(get("/admin/login.js"))
                 .andExpect(status().isOk())
@@ -592,8 +605,51 @@ class PreviewControllerTest {
         mockMvc.perform(post("/api/admin/ai-providers/1/test"))
                 .andExpect(status().isUnauthorized());
 
+        mockMvc.perform(get("/api/admin/logs"))
+                .andExpect(status().isUnauthorized());
+
         org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM stats_event", Integer.class));
         org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM stats_link", Integer.class));
+    }
+
+    @Test
+    void adminLogsEndpointReadsConfiguredServiceLog() throws Exception {
+        Cookie cookie = adminCookie();
+        Files.writeString(
+                TEST_SERVICE_LOG,
+                """
+                        2026-04-30T14:00:00 INFO application started
+                        2026-04-30T14:01:00 WARN previewKey=abc cache miss
+                        2026-04-30T14:02:00 ERROR upstream failed
+                        """,
+                StandardCharsets.UTF_8
+        );
+
+        mockMvc.perform(get("/api/admin/logs")
+                        .cookie(cookie)
+                        .param("lines", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.path").value(TEST_SERVICE_LOG.toAbsolutePath().normalize().toString()))
+                .andExpect(jsonPath("$.exists").value(true))
+                .andExpect(jsonPath("$.sizeBytes").isNumber())
+                .andExpect(jsonPath("$.modifiedAt").isNumber())
+                .andExpect(jsonPath("$.truncated").value(true))
+                .andExpect(jsonPath("$.lines.length()").value(2))
+                .andExpect(jsonPath("$.lines[0]").value("2026-04-30T14:01:00 WARN previewKey=abc cache miss"))
+                .andExpect(jsonPath("$.lines[1]").value("2026-04-30T14:02:00 ERROR upstream failed"));
+
+        mockMvc.perform(get("/api/admin/logs")
+                        .cookie(cookie)
+                        .param("level", "warn")
+                        .param("q", "PREVIEWKEY"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lines.length()").value(1))
+                .andExpect(jsonPath("$.lines[0]").value("2026-04-30T14:01:00 WARN previewKey=abc cache miss"));
+
+        mockMvc.perform(get("/api/admin/logs")
+                        .cookie(cookie)
+                        .param("level", "NOTICE"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

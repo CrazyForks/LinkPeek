@@ -16,6 +16,7 @@ public class LinkPeekProperties {
     private double cacheMaxSizeGb = 10.0;
     private int statsRetentionDays = 180;
     private String statsAdminPassword;
+    private Path serviceLogPath = Path.of("/data/logs/linkpeek.log");
     private Duration downloadTimeout = Duration.ofSeconds(120);
     private String logLevel = "INFO";
     private int videoMaxQuality = 480;
@@ -91,6 +92,14 @@ public class LinkPeekProperties {
 
     public void setStatsAdminPassword(String statsAdminPassword) {
         this.statsAdminPassword = statsAdminPassword;
+    }
+
+    public Path getServiceLogPath() {
+        return serviceLogPath;
+    }
+
+    public void setServiceLogPath(Path serviceLogPath) {
+        this.serviceLogPath = serviceLogPath;
     }
 
     public Duration getDownloadTimeout() {

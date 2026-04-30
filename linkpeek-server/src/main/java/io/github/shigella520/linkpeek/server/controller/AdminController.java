@@ -6,6 +6,7 @@ import io.github.shigella520.linkpeek.server.admin.persistence.AdminPromptMapper
 import io.github.shigella520.linkpeek.server.admin.persistence.AiProviderMapper;
 import io.github.shigella520.linkpeek.server.admin.service.AdminAuthService;
 import io.github.shigella520.linkpeek.server.admin.service.ProviderConfigService;
+import io.github.shigella520.linkpeek.server.admin.service.ServiceLogService;
 import io.github.shigella520.linkpeek.server.ai.AiApiKind;
 import io.github.shigella520.linkpeek.server.ai.AiTitleClient;
 import io.github.shigella520.linkpeek.server.stats.service.StatisticsMaintenanceService;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -46,6 +48,7 @@ public class AdminController {
     private final ProviderConfigService providerConfigService;
     private final AiProviderMapper aiProviderMapper;
     private final AiTitleClient aiTitleClient;
+    private final ServiceLogService serviceLogService;
     private final StatisticsMaintenanceService statisticsMaintenanceService;
     private final Clock clock;
 
@@ -55,6 +58,7 @@ public class AdminController {
             ProviderConfigService providerConfigService,
             AiProviderMapper aiProviderMapper,
             AiTitleClient aiTitleClient,
+            ServiceLogService serviceLogService,
             StatisticsMaintenanceService statisticsMaintenanceService,
             Clock clock
     ) {
@@ -63,6 +67,7 @@ public class AdminController {
         this.providerConfigService = providerConfigService;
         this.aiProviderMapper = aiProviderMapper;
         this.aiTitleClient = aiTitleClient;
+        this.serviceLogService = serviceLogService;
         this.statisticsMaintenanceService = statisticsMaintenanceService;
         this.clock = clock;
     }
@@ -92,6 +97,21 @@ public class AdminController {
     public StatisticsMaintenanceService.PurgeResult purgeAllStats(HttpServletRequest request) {
         adminAuthService.requireAuthenticated(request);
         return statisticsMaintenanceService.purgeAllData();
+    }
+
+    @GetMapping("/logs")
+    public ServiceLogService.ServiceLogResponse logs(
+            HttpServletRequest request,
+            @RequestParam(required = false) Integer lines,
+            @RequestParam(required = false) String level,
+            @RequestParam(name = "q", required = false) String query
+    ) {
+        adminAuthService.requireAuthenticated(request);
+        try {
+            return serviceLogService.readLogs(lines, level, query);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
     }
 
     @GetMapping("/prompts")

@@ -87,7 +87,8 @@ public class ProviderConfigService {
 
         String header = ordered.entrySet().stream()
                 .filter(entry -> StringUtils.hasText(entry.getKey()) && StringUtils.hasText(entry.getValue()))
-                .map(entry -> entry.getKey().strip() + "=" + entry.getValue().strip())
+                .map(entry -> cookieHeaderEntry(entry.getKey(), entry.getValue()))
+                .filter(StringUtils::hasText)
                 .reduce((left, right) -> left + "; " + right)
                 .orElse("");
         return header.isBlank() ? null : header;
@@ -106,5 +107,22 @@ public class ProviderConfigService {
             throw new IllegalArgumentException(fieldName + " must not be blank");
         }
         return value.strip();
+    }
+
+    private String cookieHeaderEntry(String rawKey, String rawValue) {
+        String key = rawKey.strip();
+        String value = rawValue.strip();
+        int attributeStart = value.indexOf(';');
+        if (attributeStart >= 0) {
+            value = value.substring(0, attributeStart).strip();
+        }
+        String keyPrefix = key + "=";
+        if (value.startsWith(keyPrefix)) {
+            value = value.substring(keyPrefix.length()).strip();
+        }
+        if (!StringUtils.hasText(value)) {
+            return "";
+        }
+        return key + "=" + value;
     }
 }

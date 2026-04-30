@@ -20,9 +20,9 @@ class ProviderConfigServiceTest {
         FakeProviderConfigMapper mapper = new FakeProviderConfigMapper();
         ProviderConfigService service = new ProviderConfigService(mapper, fixedClock());
         Map<String, String> values = new LinkedHashMap<>();
-        values.put("cf_clearance", " clear ");
+        values.put("cf_clearance", " cf_clearance=clear; ");
         values.put("_forum_session", " ");
-        values.put("_t", " token ");
+        values.put("_t", " _t=token; Path=/; HttpOnly ");
         values.put("extra_cookie", " extra ");
 
         service.saveProviderConfigs(ProviderConfigService.PROVIDER_LINUXDO, values);

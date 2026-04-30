@@ -43,6 +43,7 @@ public class LinuxDoPreviewProvider implements PreviewProvider {
     private static final int CARD_HEIGHT = TitleCardRenderer.HEIGHT;
     private static final int MAX_DESCRIPTION_LENGTH = 280;
     private static final int MAX_RAW_CONTENT_LENGTH = 12_000;
+    private static final int MAX_ERROR_BODY_LOG_CHARS = 1_000;
     private static final String ELLIPSIS = "…";
 
     private final HttpClient httpClient;
@@ -134,6 +135,13 @@ public class LinuxDoPreviewProvider implements PreviewProvider {
         try {
             HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() >= 400) {
+                log.warn(
+                        "linuxdo_topic_page_http_error requestUri={} status={} cookieConfigured={} responseBody={}",
+                        requestUri,
+                        response.statusCode(),
+                        cookieHeader != null,
+                        responseBodySnippet(response.body())
+                );
                 throw new UpstreamFetchException(upstreamHttpErrorMessage(response.statusCode(), cookieHeader));
             }
 
@@ -369,6 +377,17 @@ public class LinuxDoPreviewProvider implements PreviewProvider {
                 .replace('\u00A0', ' ')
                 .replaceAll("\\s+", " ")
                 .strip();
+    }
+
+    private String responseBodySnippet(byte[] body) {
+        if (body == null || body.length == 0) {
+            return "";
+        }
+        String text = cleanText(new String(body, StandardCharsets.UTF_8));
+        if (text.length() <= MAX_ERROR_BODY_LOG_CHARS) {
+            return text;
+        }
+        return text.substring(0, MAX_ERROR_BODY_LOG_CHARS).stripTrailing() + ELLIPSIS;
     }
 
     private UpstreamFetchException translateIOException(IOException exception, String fallbackMessage) {
