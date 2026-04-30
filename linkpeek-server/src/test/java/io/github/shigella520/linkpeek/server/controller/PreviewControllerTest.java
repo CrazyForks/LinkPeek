@@ -4,20 +4,25 @@ import io.github.shigella520.linkpeek.core.model.ContentType;
 import io.github.shigella520.linkpeek.core.model.PreviewKey;
 import io.github.shigella520.linkpeek.core.model.PreviewMetadata;
 import io.github.shigella520.linkpeek.core.provider.PreviewProvider;
-import io.github.shigella520.linkpeek.server.service.PreviewProviderRegistry;
+import io.github.shigella520.linkpeek.server.admin.service.ProviderConfigService;
+import io.github.shigella520.linkpeek.server.admin.model.AiProviderRecord;
+import io.github.shigella520.linkpeek.server.ai.AiTitleClient;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentMatcher;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 
 import java.io.IOException;
 import java.net.URI;
@@ -28,11 +33,14 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
-import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.Mockito.when;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -74,10 +82,14 @@ class PreviewControllerTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    @MockBean
-    private PreviewProviderRegistry previewProviderRegistry;
+    @Autowired
+    private ProviderConfigService providerConfigService;
 
+    @Autowired
     private TestPreviewProvider testPreviewProvider;
+
+    @Autowired
+    private TestAiTitleClient testAiTitleClient;
 
     @BeforeEach
     void setUp() throws IOException {
@@ -95,14 +107,12 @@ class PreviewControllerTest {
         writeTestWebIcon();
         jdbcTemplate.execute("DELETE FROM stats_event");
         jdbcTemplate.execute("DELETE FROM stats_link");
+        jdbcTemplate.execute("DELETE FROM admin_prompt");
+        jdbcTemplate.execute("DELETE FROM provider_config");
+        jdbcTemplate.execute("DELETE FROM ai_provider");
 
-        testPreviewProvider = new TestPreviewProvider();
-        when(previewProviderRegistry.findSupporting(argThat(supportedUrl())))
-                .thenAnswer(invocation -> Optional.of(testPreviewProvider));
-        when(previewProviderRegistry.findSupporting(argThat(uri -> !supportedUrl().matches(uri))))
-                .thenReturn(Optional.empty());
-        when(previewProviderRegistry.getById("stub"))
-                .thenReturn(Optional.of(testPreviewProvider));
+        testPreviewProvider.reset();
+        testAiTitleClient.reset();
     }
 
     @AfterAll
@@ -155,7 +165,8 @@ class PreviewControllerTest {
                 .andExpect(content().contentTypeCompatibleWith(org.springframework.http.MediaType.APPLICATION_JSON))
                 .andExpect(content().string(containsString("\"title\":\"LinkPeek API\"")))
                 .andExpect(content().string(containsString("\"/preview\"")))
-                .andExpect(content().string(containsString("\"/api/preview/support\"")));
+                .andExpect(content().string(containsString("\"/api/preview/support\"")))
+                .andExpect(content().string(containsString("\"/api/preview/styles\"")));
     }
 
     @Test
@@ -178,6 +189,9 @@ class PreviewControllerTest {
                 .andExpect(content().string(containsString("LinkPeek Dashboard")))
                 .andExpect(content().string(containsString("Copy LinkPeek URL")))
                 .andExpect(content().string(containsString("link-builder-input")))
+                .andExpect(content().string(containsString("link-builder-style")))
+                .andExpect(content().string(containsString("ai-render-rate-inline")))
+                .andExpect(content().string(containsString("ai-success-rate-inline")))
                 .andExpect(content().string(containsString("/favicon.ico")))
                 .andExpect(content().string(containsString("https://github.com/shigella520/LinkPeek")));
 
@@ -186,6 +200,56 @@ class PreviewControllerTest {
                 .andExpect(content().contentTypeCompatibleWith("text/css"));
 
         mockMvc.perform(get("/dashboard/app.js"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(org.springframework.http.MediaType.valueOf("application/javascript")))
+                .andExpect(content().string(containsString("/api/preview/styles")))
+                .andExpect(content().string(containsString("styleSelect.addEventListener")));
+
+        mockMvc.perform(get("/admin"))
+                .andExpect(status().isFound())
+                .andExpect(header().string(HttpHeaders.LOCATION, "/admin/login?next=/admin"));
+
+        Cookie adminCookie = adminCookie();
+
+        mockMvc.perform(get("/admin")
+                        .cookie(adminCookie))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(org.springframework.http.MediaType.TEXT_HTML))
+                .andExpect(content().string(containsString("LinkPeek Admin")))
+                .andExpect(content().string(containsString("provider-config")))
+                .andExpect(content().string(containsString("ai-providers")))
+                .andExpect(content().string(containsString("ai-new-button")))
+                .andExpect(content().string(containsString("ai-api-kind")))
+                .andExpect(content().string(containsString("https://api.openai.com/v1")))
+                .andExpect(content().string(containsString("prompt-modal")))
+                .andExpect(content().string(containsString("ai-modal")))
+                .andExpect(content().string(not(containsString("side-nav"))))
+                .andExpect(result -> {
+                    String html = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
+                    int promptIndex = html.indexOf("id=\"prompts\"");
+                    int aiIndex = html.indexOf("id=\"ai-providers\"");
+                    int providerIndex = html.indexOf("id=\"provider-config\"");
+                    org.junit.jupiter.api.Assertions.assertTrue(
+                            promptIndex >= 0 && promptIndex < aiIndex && aiIndex < providerIndex,
+                            "Expected admin module order: prompts, AI providers, provider config."
+                    );
+                });
+
+        mockMvc.perform(get("/admin/login"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(org.springframework.http.MediaType.TEXT_HTML))
+                .andExpect(content().string(containsString("login-form")))
+                .andExpect(content().string(containsString("/admin/login.js")));
+
+        mockMvc.perform(get("/admin/styles.css"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("text/css"));
+
+        mockMvc.perform(get("/admin/app.js"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith(org.springframework.http.MediaType.valueOf("application/javascript")));
+
+        mockMvc.perform(get("/admin/login.js"))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(org.springframework.http.MediaType.valueOf("application/javascript")));
 
@@ -242,6 +306,73 @@ class PreviewControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(org.springframework.http.MediaType.TEXT_HTML))
                 .andExpect(content().string(containsString("og:title")));
+    }
+
+    @Test
+    void previewStyleUsesAiTitleForGeneratedTextCardsAndCachesResult() throws Exception {
+        testPreviewProvider.generatedTextCard.set(true);
+        testAiTitleClient.generatedTitle.set("\"AI 生成标题\"");
+        long now = System.currentTimeMillis();
+        jdbcTemplate.update(
+                "INSERT INTO admin_prompt (style, prompt, updated_at) VALUES (?, ?, ?)",
+                "fun", "请根据 {raw_content} 生成标题", now
+        );
+        jdbcTemplate.update(
+                "INSERT INTO ai_provider (name, enabled, sort_order, base_url, model, effort, api_key, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "local", 1, 1, "https://api.openai.com/v1/chat/completions", "test-model", "low", "test-key", now
+        );
+
+        mockMvc.perform(get("/preview")
+                        .param("url", "https://video.example.com/watch/abc")
+                        .param("style", "fun")
+                        .header(HttpHeaders.USER_AGENT, "facebookexternalhit/1.1"))
+                .andExpect(status().isOk())
+                .andExpect(result -> org.junit.jupiter.api.Assertions.assertTrue(
+                        result.getResponse().getContentAsString(StandardCharsets.UTF_8).contains("AI 生成标题")
+                ))
+                .andExpect(content().string(not(containsString("/media/thumb/" + key().value() + ".jpg"))));
+
+        mockMvc.perform(get("/preview")
+                        .param("url", "https://video.example.com/watch/abc")
+                        .param("style", "fun")
+                        .header(HttpHeaders.USER_AGENT, "facebookexternalhit/1.1"))
+                .andExpect(status().isOk())
+                .andExpect(result -> org.junit.jupiter.api.Assertions.assertTrue(
+                        result.getResponse().getContentAsString(StandardCharsets.UTF_8).contains("AI 生成标题")
+                ));
+
+        org.junit.jupiter.api.Assertions.assertEquals(1, testAiTitleClient.requests.get());
+        org.junit.jupiter.api.Assertions.assertTrue(testAiTitleClient.prompt.get().contains("原始帖子正文"));
+        org.junit.jupiter.api.Assertions.assertTrue(testAiTitleClient.prompt.get().contains("只返回一行中文标题文本"));
+        org.junit.jupiter.api.Assertions.assertEquals(
+                2,
+                jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM stats_event WHERE event_type = 'PREVIEW_CREATED' AND ai_requested = 1 AND ai_succeeded = 1",
+                        Integer.class
+                )
+        );
+    }
+
+    @Test
+    void previewStyleDoesNotUseAiForRealImageCards() throws Exception {
+        long now = System.currentTimeMillis();
+        jdbcTemplate.update(
+                "INSERT INTO admin_prompt (style, prompt, updated_at) VALUES (?, ?, ?)",
+                "fun", "请根据 {raw_content} 生成标题", now
+        );
+        jdbcTemplate.update(
+                "INSERT INTO ai_provider (name, enabled, sort_order, base_url, model, effort, api_key, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "local", 1, 1, "https://api.openai.com/v1/chat/completions", "test-model", "", "test-key", now
+        );
+
+        mockMvc.perform(get("/preview")
+                        .param("url", "https://video.example.com/watch/abc")
+                        .param("style", "fun")
+                        .header(HttpHeaders.USER_AGENT, "facebookexternalhit/1.1"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("Stub title")));
+
+        org.junit.jupiter.api.Assertions.assertEquals(0, testAiTitleClient.requests.get());
     }
 
     @Test
@@ -330,6 +461,28 @@ class PreviewControllerTest {
     }
 
     @Test
+    void previewStylesEndpointReturnsPublicStyleNamesWithoutPrompts() throws Exception {
+        long now = System.currentTimeMillis();
+        jdbcTemplate.update(
+                "INSERT INTO admin_prompt (style, prompt, updated_at) VALUES (?, ?, ?)",
+                "viral", "secret viral prompt", now
+        );
+        jdbcTemplate.update(
+                "INSERT INTO admin_prompt (style, prompt, updated_at) VALUES (?, ?, ?)",
+                "daily", "secret daily prompt", now
+        );
+
+        mockMvc.perform(get("/api/preview/styles"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
+                .andExpect(content().contentTypeCompatibleWith(org.springframework.http.MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.styles.length()").value(2))
+                .andExpect(jsonPath("$.styles[0]").value("daily"))
+                .andExpect(jsonPath("$.styles[1]").value("viral"))
+                .andExpect(content().string(not(containsString("secret"))));
+    }
+
+    @Test
     void dashboardStatsEndpointAggregatesPreviewEvents() throws Exception {
         mockMvc.perform(get("/preview")
                         .param("url", "https://video.example.com/watch/abc")
@@ -351,6 +504,10 @@ class PreviewControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.overview.createCount.value").value(1))
                 .andExpect(jsonPath("$.overview.openCount.value").value(1))
+                .andExpect(jsonPath("$.funnel.aiRequestedCount").value(0))
+                .andExpect(jsonPath("$.funnel.aiSucceededCount").value(0))
+                .andExpect(jsonPath("$.funnel.aiRenderRate").value(0.0))
+                .andExpect(jsonPath("$.funnel.aiSuccessRate").value(0.0))
                 .andExpect(jsonPath("$.failureBreakdown.invalid").value(1))
                 .andExpect(jsonPath("$.topLinks[0].canonicalUrl").value("https://video.example.com/watch/abc"));
     }
@@ -380,7 +537,7 @@ class PreviewControllerTest {
     }
 
     @Test
-    void statsPurgeAllEndpointDeletesAllStatsWithValidPassword() throws Exception {
+    void adminSessionLoginAndPurgeDeletesAllStats() throws Exception {
         jdbcTemplate.update(
                 "INSERT INTO stats_link (preview_key, provider_id, canonical_url, title, site_name, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 "preview-1", "stub", "https://video.example.com/watch/abc", "Stub title", "Stub site", 1000L, 1000L
@@ -390,8 +547,20 @@ class PreviewControllerTest {
                 1000L, "PREVIEW_CREATED", "preview-1", "stub", 200, 0, 10, "CRAWLER", null
         );
 
-        mockMvc.perform(get("/api/stats/admin/purge-all")
-                        .param("password", "test-admin-password"))
+        mockMvc.perform(get("/api/admin/session"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.authenticated").value(false));
+
+        Cookie cookie = adminCookie();
+
+        mockMvc.perform(get("/api/admin/session")
+                        .cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.authenticated").value(true));
+
+        mockMvc.perform(post("/api/admin/stats/purge-all")
+                        .cookie(cookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.deletedEvents").value(1))
                 .andExpect(jsonPath("$.deletedLinks").value(1));
@@ -401,7 +570,7 @@ class PreviewControllerTest {
     }
 
     @Test
-    void statsPurgeAllEndpointRejectsInvalidPassword() throws Exception {
+    void adminEndpointsRejectUnauthenticatedRequestsAndInvalidLogin() throws Exception {
         jdbcTemplate.update(
                 "INSERT INTO stats_link (preview_key, provider_id, canonical_url, title, site_name, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 "preview-1", "stub", "https://video.example.com/watch/abc", "Stub title", "Stub site", 1000L, 1000L
@@ -411,12 +580,82 @@ class PreviewControllerTest {
                 1000L, "PREVIEW_CREATED", "preview-1", "stub", 200, 0, 10, "CRAWLER", null
         );
 
-        mockMvc.perform(get("/api/stats/admin/purge-all")
-                        .param("password", "wrong-password"))
+        mockMvc.perform(post("/api/admin/login")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"wrong-password\"}"))
                 .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/admin/stats/purge-all"))
+                .andExpect(status().isUnauthorized());
 
         org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM stats_event", Integer.class));
         org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM stats_link", Integer.class));
+    }
+
+    @Test
+    void adminPromptProviderConfigAndAiProviderCrudUseAuthenticatedSession() throws Exception {
+        Cookie cookie = adminCookie();
+
+        mockMvc.perform(put("/api/admin/prompts/fun")
+                        .cookie(cookie)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"prompt\":\"请基于 {raw_content} 写标题\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.style").value("fun"))
+                .andExpect(jsonPath("$.prompt").value("请基于 {raw_content} 写标题"));
+
+        mockMvc.perform(get("/api/admin/prompts")
+                        .cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].style").value("fun"));
+
+        mockMvc.perform(put("/api/admin/provider-config/linuxdo")
+                        .cookie(cookie)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"values\":{\"_t\":\"token\",\"cf_clearance\":\"clear\",\"_forum_session\":\"session\"}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.configs.linuxdo._t").value("token"));
+        org.junit.jupiter.api.Assertions.assertEquals("_t=token; cf_clearance=clear; _forum_session=session", providerConfigService.linuxDoCookieHeader());
+
+        mockMvc.perform(put("/api/admin/provider-config/nga")
+                        .cookie(cookie)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"values\":{\"NGA_PASSPORT_UID\":\"uid\",\"NGA_PASSPORT_CID\":\"cid\"}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.configs.nga.NGA_PASSPORT_UID").value("uid"));
+        org.junit.jupiter.api.Assertions.assertEquals("uid", providerConfigService.ngaPassportUid());
+        org.junit.jupiter.api.Assertions.assertEquals("cid", providerConfigService.ngaPassportCid());
+
+        mockMvc.perform(post("/api/admin/ai-providers")
+                        .cookie(cookie)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Invalid","enabled":true,"sortOrder":10,"baseUrl":"https://www.packyapi.com/v2","apiKind":"CHAT_COMPLETIONS","model":"gpt-test","effort":"","apiKey":"plain-key"}
+                                """))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/admin/ai-providers")
+                        .cookie(cookie)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"OpenAI","enabled":true,"sortOrder":10,"baseUrl":"https://api.openai.com/v1","apiKind":"RESPONSES","model":"gpt-test","effort":"low","apiKey":"plain-key"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").exists())
+                .andExpect(jsonPath("$.baseUrl").value("https://api.openai.com/v1"))
+                .andExpect(jsonPath("$.apiKind").value("RESPONSES"))
+                .andExpect(jsonPath("$.apiKey").value("plain-key"));
+
+        mockMvc.perform(get("/api/admin/ai-providers")
+                        .cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].apiKind").value("RESPONSES"))
+                .andExpect(jsonPath("$[0].apiKey").value("plain-key"));
+
+        mockMvc.perform(delete("/api/admin/prompts/fun")
+                        .cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deleted").value(1));
     }
 
     @Test
@@ -452,8 +691,14 @@ class PreviewControllerTest {
         return PreviewKey.fromCanonicalUrl("https://video.example.com/watch/abc");
     }
 
-    private static ArgumentMatcher<URI> supportedUrl() {
-        return uri -> uri != null && "video.example.com".equals(uri.getHost());
+    private Cookie adminCookie() throws Exception {
+        MvcResult login = mockMvc.perform(post("/api/admin/login")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"password\":\"test-admin-password\"}"))
+                .andExpect(status().isOk())
+                .andExpect(header().exists(HttpHeaders.SET_COOKIE))
+                .andReturn();
+        return login.getResponse().getCookie("LINKPEEK_ADMIN_SESSION");
     }
 
     private void awaitLinkTitle(String expectedTitle) throws InterruptedException {
@@ -479,10 +724,55 @@ class PreviewControllerTest {
         );
     }
 
-    private static final class TestPreviewProvider implements PreviewProvider {
+    @TestConfiguration
+    static class TestProviderConfiguration {
+        @Bean
+        TestPreviewProvider testPreviewProvider() {
+            return new TestPreviewProvider();
+        }
+
+        @Bean
+        @Primary
+        TestAiTitleClient testAiTitleClient() {
+            return new TestAiTitleClient();
+        }
+    }
+
+    static final class TestAiTitleClient extends AiTitleClient {
+        private final AtomicInteger requests = new AtomicInteger();
+        private final AtomicReference<String> prompt = new AtomicReference<>("");
+        private final AtomicReference<String> generatedTitle = new AtomicReference<>("AI title");
+
+        TestAiTitleClient() {
+            super(null, null);
+        }
+
+        @Override
+        public Optional<String> generateTitle(AiProviderRecord provider, String prompt) {
+            requests.incrementAndGet();
+            this.prompt.set(prompt);
+            return Optional.ofNullable(generatedTitle.get());
+        }
+
+        void reset() {
+            requests.set(0);
+            prompt.set("");
+            generatedTitle.set("AI title");
+        }
+    }
+
+    static final class TestPreviewProvider implements PreviewProvider {
         private final AtomicInteger thumbnailDownloads = new AtomicInteger();
         private final AtomicInteger canonicalizations = new AtomicInteger();
         private final AtomicInteger resolutions = new AtomicInteger();
+        private final java.util.concurrent.atomic.AtomicBoolean generatedTextCard = new java.util.concurrent.atomic.AtomicBoolean();
+
+        void reset() {
+            thumbnailDownloads.set(0);
+            canonicalizations.set(0);
+            resolutions.set(0);
+            generatedTextCard.set(false);
+        }
 
         @Override
         public String getId() {
@@ -503,6 +793,7 @@ class PreviewControllerTest {
         @Override
         public PreviewMetadata resolve(URI sourceUrl) {
             resolutions.incrementAndGet();
+            boolean generated = generatedTextCard.get();
             return new PreviewMetadata(
                     sourceUrl.toString(),
                     canonicalize(sourceUrl).toString(),
@@ -510,10 +801,11 @@ class PreviewControllerTest {
                     "Stub title",
                     "Stub description",
                     "Stub site",
-                    "https://img.example/thumb.jpg",
+                    generated ? "generated://stub/title-card/abc" : "https://img.example/thumb.jpg",
                     1200,
                     630,
-                    ContentType.VIDEO
+                    generated ? ContentType.ARTICLE : ContentType.VIDEO,
+                    generated ? "原始帖子正文，包含需要被 AI 总结的信息。" : ""
             );
         }
 

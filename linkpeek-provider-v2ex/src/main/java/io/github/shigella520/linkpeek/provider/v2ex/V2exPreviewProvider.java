@@ -39,6 +39,7 @@ public class V2exPreviewProvider implements PreviewProvider {
     private static final int CARD_WIDTH = TitleCardRenderer.WIDTH;
     private static final int CARD_HEIGHT = TitleCardRenderer.HEIGHT;
     private static final int MAX_DESCRIPTION_LENGTH = 280;
+    private static final int MAX_RAW_CONTENT_LENGTH = 12_000;
     private static final String ELLIPSIS = "…";
 
     private final HttpClient httpClient;
@@ -121,6 +122,7 @@ public class V2exPreviewProvider implements PreviewProvider {
             JsonNode node = topic.path("node");
             JsonNode member = topic.path("member");
             String topicTitle = clean(topic.path("title").asText(""));
+            String rawContent = summarize(topic.path("content").asText(""), MAX_RAW_CONTENT_LENGTH);
 
             return new PreviewMetadata(
                     normalizedSourceUrl.toString(),
@@ -130,13 +132,14 @@ public class V2exPreviewProvider implements PreviewProvider {
                     buildDescription(
                             clean(node.path("title").asText("")),
                             clean(member.path("username").asText("")),
-                            clean(topic.path("content").asText(""))
+                            rawContent
                     ),
                     SITE_NAME,
                     buildGeneratedThumbnailUrl(topicId),
                     CARD_WIDTH,
                     CARD_HEIGHT,
-                    ContentType.ARTICLE
+                    ContentType.ARTICLE,
+                    rawContent
             );
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -225,11 +228,15 @@ public class V2exPreviewProvider implements PreviewProvider {
     }
 
     private String summarize(String value) {
+        return summarize(value, MAX_DESCRIPTION_LENGTH);
+    }
+
+    private String summarize(String value, int maxLength) {
         String compact = clean(value);
-        if (compact.length() <= MAX_DESCRIPTION_LENGTH) {
+        if (compact.length() <= maxLength) {
             return compact;
         }
-        return compact.substring(0, MAX_DESCRIPTION_LENGTH - 1).stripTrailing() + ELLIPSIS;
+        return compact.substring(0, maxLength - 1).stripTrailing() + ELLIPSIS;
     }
 
     private String clean(String value) {

@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -32,19 +33,23 @@ public class NgaPreviewProvider implements PreviewProvider {
     private static final Pattern TID_QUERY_PATTERN = Pattern.compile("(^|&)tid=(\\d+)($|&)");
     private static final Pattern TITLE_TAG_PATTERN = Pattern.compile("(?is)<title[^>]*>(.*?)</title>");
     private static final Pattern META_OG_TITLE_PATTERN = Pattern.compile("(?is)<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"'](.*?)[\"'][^>]*>");
+    private static final Pattern POST_CONTENT_PATTERN = Pattern.compile("(?is)<(?:span|div|td)\\b[^>]*(?:class=[\"'][^\"']*\\bpostcontent\\b[^\"']*[\"']|id=[\"']postcontent[^\"']*[\"'])[^>]*>(.*?)</(?:span|div|td)>");
+    private static final Pattern META_DESCRIPTION_PATTERN = Pattern.compile("(?is)<meta[^>]+(?:name|property)=[\"'](?:description|og:description)[\"'][^>]+content=[\"'](.*?)[\"'][^>]*>");
+    private static final Pattern TAG_PATTERN = Pattern.compile("(?is)<[^>]+>");
 
     private static final String CANONICAL_HOST = "bbs.nga.cn";
     private static final String SITE_NAME = "NGA";
     private static final String TITLE_CARD_PREFIX = "generated://nga/thread-card/";
     private static final int CARD_WIDTH = TitleCardRenderer.WIDTH;
     private static final int CARD_HEIGHT = TitleCardRenderer.HEIGHT;
+    private static final int MAX_RAW_CONTENT_LENGTH = 12_000;
+    private static final String ELLIPSIS = "…";
 
     private final HttpClient httpClient;
     private final URI pageBaseUri;
     private final Duration requestTimeout;
     private final String userAgent;
-    private final String ngaPassportUid;
-    private final String ngaPassportCid;
+    private final Supplier<NgaCredentials> ngaCredentialsSupplier;
 
     public NgaPreviewProvider(
             HttpClient httpClient,
@@ -54,12 +59,21 @@ public class NgaPreviewProvider implements PreviewProvider {
             String ngaPassportUid,
             String ngaPassportCid
     ) {
+        this(httpClient, pageBaseUri, requestTimeout, userAgent, () -> new NgaCredentials(ngaPassportUid, ngaPassportCid));
+    }
+
+    public NgaPreviewProvider(
+            HttpClient httpClient,
+            URI pageBaseUri,
+            Duration requestTimeout,
+            String userAgent,
+            Supplier<NgaCredentials> ngaCredentialsSupplier
+    ) {
         this.httpClient = httpClient;
         this.pageBaseUri = pageBaseUri;
         this.requestTimeout = requestTimeout;
         this.userAgent = userAgent;
-        this.ngaPassportUid = trimToNull(ngaPassportUid);
-        this.ngaPassportCid = trimToNull(ngaPassportCid);
+        this.ngaCredentialsSupplier = ngaCredentialsSupplier == null ? () -> null : ngaCredentialsSupplier;
     }
 
     @Override
@@ -96,6 +110,9 @@ public class NgaPreviewProvider implements PreviewProvider {
         String tid = extractTid(canonicalUrl)
                 .orElseThrow(() -> new UnsupportedPreviewUrlException("Only NGA thread read.php URLs are supported."));
         URI requestUri = pageBaseUri.resolve("/read.php?tid=" + tid);
+        NgaCredentials credentials = ngaCredentialsSupplier.get();
+        String ngaPassportUid = trimToNull(credentials == null ? null : credentials.uid());
+        String ngaPassportCid = trimToNull(credentials == null ? null : credentials.cid());
 
         HttpRequest request = HttpRequest.newBuilder(requestUri)
                 .timeout(requestTimeout)
@@ -103,7 +120,7 @@ public class NgaPreviewProvider implements PreviewProvider {
                 .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
                 .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
                 .header("Referer", pageBaseUri.toString())
-                .header("Cookie", buildCookieHeader())
+                .header("Cookie", buildCookieHeader(ngaPassportUid, ngaPassportCid))
                 .GET()
                 .build();
 
@@ -113,7 +130,8 @@ public class NgaPreviewProvider implements PreviewProvider {
                 throw new UpstreamFetchException("NGA page returned HTTP " + response.statusCode());
             }
 
-            String title = extractTitle(decodeHtml(response.body()));
+            String html = decodeHtml(response.body());
+            String title = extractTitle(html);
             if (title.isBlank()) {
                 throw new UpstreamFetchException("Failed to parse NGA thread metadata from the page.");
             }
@@ -128,7 +146,8 @@ public class NgaPreviewProvider implements PreviewProvider {
                     TITLE_CARD_PREFIX + tid,
                     CARD_WIDTH,
                     CARD_HEIGHT,
-                    ContentType.ARTICLE
+                    ContentType.ARTICLE,
+                    extractRawContent(html)
             );
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -179,6 +198,15 @@ public class NgaPreviewProvider implements PreviewProvider {
                 .orElse("");
     }
 
+    private String extractRawContent(String html) {
+        return firstGroup(POST_CONTENT_PATTERN, html)
+                .or(() -> firstGroup(META_DESCRIPTION_PATTERN, html))
+                .map(this::stripTags)
+                .map(this::cleanText)
+                .map(value -> summarize(value, MAX_RAW_CONTENT_LENGTH))
+                .orElse("");
+    }
+
     private Optional<String> firstGroup(Pattern pattern, String value) {
         Matcher matcher = pattern.matcher(value);
         if (matcher.find()) {
@@ -210,6 +238,29 @@ public class NgaPreviewProvider implements PreviewProvider {
                 .strip();
     }
 
+    private String stripTags(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String withBreaks = value.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n");
+        return TAG_PATTERN.matcher(withBreaks)
+                .replaceAll(" ")
+                .replace("&nbsp;", " ")
+                .replace("&amp;", "&")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"")
+                .replace("&#39;", "'");
+    }
+
+    private String summarize(String value, int maxLength) {
+        String compact = cleanText(value);
+        if (compact.length() <= maxLength) {
+            return compact;
+        }
+        return compact.substring(0, maxLength - 1).stripTrailing() + ELLIPSIS;
+    }
+
     private String decodeHtml(byte[] body) {
         String gbkHtml = new String(body, Charset.forName("GB18030"));
         if (gbkHtml.contains("charset=utf-8") || gbkHtml.contains("charset=UTF-8")) {
@@ -218,7 +269,7 @@ public class NgaPreviewProvider implements PreviewProvider {
         return gbkHtml;
     }
 
-    private String buildCookieHeader() {
+    private String buildCookieHeader(String ngaPassportUid, String ngaPassportCid) {
         if (ngaPassportUid != null && ngaPassportCid != null) {
             return "ngaPassportUid=" + ngaPassportUid + "; ngaPassportCid=" + ngaPassportCid + ";";
         }
@@ -252,5 +303,8 @@ public class NgaPreviewProvider implements PreviewProvider {
             current = current.getCause();
         }
         return false;
+    }
+
+    public record NgaCredentials(String uid, String cid) {
     }
 }

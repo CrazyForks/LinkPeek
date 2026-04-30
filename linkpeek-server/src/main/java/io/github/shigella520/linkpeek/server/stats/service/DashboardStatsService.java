@@ -110,14 +110,20 @@ public class DashboardStatsService {
         long createCount = summary.getCreateCount();
         long openCount = summary.getOpenCount();
         long failedCount = summary.getFailedCount();
+        long aiRequestedCount = summary.getAiRequestedCount();
+        long aiSucceededCount = summary.getAiSucceededCount();
         return new DashboardStatsResponse.Funnel(
                 total,
                 createCount,
                 openCount,
                 failedCount,
+                aiRequestedCount,
+                aiSucceededCount,
                 ratio(createCount + openCount, total),
                 ratio(createCount, total),
-                nullableRatio(openCount, createCount)
+                nullableRatio(openCount, createCount),
+                ratio(aiSucceededCount, createCount),
+                ratio(aiSucceededCount, aiRequestedCount)
         );
     }
 

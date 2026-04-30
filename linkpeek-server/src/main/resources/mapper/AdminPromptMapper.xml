@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.shigella520.linkpeek.server.admin.persistence.AdminPromptMapper">
+    <select id="selectAllPrompts" resultType="io.github.shigella520.linkpeek.server.admin.model.AdminPromptRecord">
+        SELECT
+            style,
+            prompt,
+            updated_at
+        FROM admin_prompt
+        ORDER BY style ASC
+    </select>
+
+    <select id="selectStyles" resultType="java.lang.String">
+        SELECT
+            style
+        FROM admin_prompt
+        ORDER BY style ASC
+    </select>
+
+    <select id="selectPrompt" resultType="io.github.shigella520.linkpeek.server.admin.model.AdminPromptRecord">
+        SELECT
+            style,
+            prompt,
+            updated_at
+        FROM admin_prompt
+        WHERE style = #{style}
+    </select>
+
+    <insert id="upsertPrompt" parameterType="io.github.shigella520.linkpeek.server.admin.model.AdminPromptRecord">
+        INSERT INTO admin_prompt (
+            style,
+            prompt,
+            updated_at
+        )
+        VALUES (
+            #{style},
+            #{prompt},
+            #{updatedAt}
+        )
+        ON CONFLICT(style) DO UPDATE SET
+            prompt = excluded.prompt,
+            updated_at = excluded.updated_at
+    </insert>
+
+    <delete id="deletePrompt">
+        DELETE FROM admin_prompt
+        WHERE style = #{style}
+    </delete>
+</mapper>

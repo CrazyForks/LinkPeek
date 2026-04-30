@@ -8,7 +8,10 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
-@MapperScan("io.github.shigella520.linkpeek.server.stats.persistence")
+@MapperScan({
+        "io.github.shigella520.linkpeek.server.stats.persistence",
+        "io.github.shigella520.linkpeek.server.admin.persistence"
+})
 @EnableScheduling
 @EnableConfigurationProperties(LinkPeekProperties.class)
 public class LinkPeekApplication {

@@ -28,6 +28,8 @@
 - 内置 `SQLite + MyBatis` 统计子系统，自动采集创建、打开、失败和缩略图命中事件。
 - 普通浏览器打开会立即跳转，并通过有界后台任务异步补齐统计标题。
 - 自带统计页，适合自部署后直接查看运营数据。
+- 提供 `/admin` 管理后台，可维护提示词、Provider 配置、AI 服务配置并清理统计数据。
+- 文本卡片 provider 支持通过 `style` 参数触发 AI 标题生成，Bilibili 等真实图片卡片保持原图预览。
 - 使用多模块组织方式，便于后续扩展更多 provider。
 
 ## 安装（Docker）
@@ -48,6 +50,7 @@ docker compose up -d --build
 - `WEB_ICON_PATH`：可选的网页 favicon 文件路径，例如 `/data/favicon.svg` 或 `/data/favicon.ico`
 - `CACHE_DIR`：缓存目录，默认 `/data/cache`
 - `STATS_DB_PATH`：统计数据库路径，默认 `/data/stats/linkpeek.db`
+- `STATS_ADMIN_PASSWORD`：管理后台登录密码，配置后启用 `/admin`
 - `CACHE_MAX_SIZE_GB`：缓存空间上限，默认 `10`
 - `PREVIEW_WARMUP_THREADS`：普通浏览器打开后的异步标题预热线程数，默认 `2`
 - `PREVIEW_WARMUP_QUEUE_CAPACITY`：异步标题预热队列上限，默认 `64`
@@ -103,10 +106,17 @@ https://preview.example.com
 https://preview.example.com/preview?url=https%3A%2F%2Fwww.v2ex.com%2Ft%2F1206093
 ```
 
+如果已经在后台配置了提示词 `style=fun`，可以追加 `style` 参数让文本卡片标题由 AI 基于帖子正文生成：
+
+```text
+https://preview.example.com/preview?url=https%3A%2F%2Fwww.v2ex.com%2Ft%2F1206093&style=fun
+```
+
 行为说明：
 
 - 当 iMessage 或其他爬虫访问该链接时，服务返回 Open Graph HTML。
 - 当普通用户点击同一个链接时，服务会 `302` 跳转到原始链接。
+- 当 `style` 命中后台提示词且目标 provider 使用文本卡片时，服务会同步调用已启用的 AI Provider 生成一行中文标题；AI 失败时回退原标题。
 - Raycast 脚本会先调用云端支持判定接口，只有当前服务端 provider 支持该链接时才复制预览链接。
 
 如果只需要判断一个链接当前是否支持预览，可以调用：
@@ -190,7 +200,7 @@ LinkPeek/
 ├── linkpeek-provider-template/
 │   └── provider 开发模板
 ├── linkpeek-server/
-│   └── Spring Boot 服务、路由、缓存、HTML 渲染、配置装配
+│   └── Spring Boot 服务、路由、缓存、HTML 渲染、管理后台、AI 标题生成
 ├── docs/
 │   ├── architecture.md
 │   ├── linkpeek.sh
@@ -211,7 +221,7 @@ LinkPeek/
 - `linkpeek-provider-nga`：封装 NGA 帖子 URL 识别、页面抓取、首楼摘要提取和缩略图生成逻辑。
 - `linkpeek-provider-v2ex`：封装 V2EX 话题页解析、回复锚点归一化和缩略图下载逻辑。
 - `linkpeek-provider-template`：提供新增 provider 的最小骨架示例。
-- `linkpeek-server`：负责 HTTP 接口、爬虫识别、缓存、OG HTML 输出、SQLite 统计和 Dashboard 页面。
+- `linkpeek-server`：负责 HTTP 接口、爬虫识别、缓存、OG HTML 输出、SQLite 统计、Dashboard 页面、管理后台和 AI 标题生成。
 
 ## 核心逻辑 / 关键流程
 
@@ -269,7 +279,7 @@ LinkPeek/
 
 ### 配置项
 
-所有主要配置都通过环境变量提供：
+部署级配置通过环境变量提供；论坛登录态、提示词字典和 AI 服务配置通过 `/admin` 写入同一个 SQLite 数据库。
 
 | 变量名 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -280,16 +290,24 @@ LinkPeek/
 | `CACHE_TTL_SECONDS` | `86400` | 元数据和缩略图缓存有效期 |
 | `CACHE_MAX_SIZE_GB` | `10` | 缓存空间上限 |
 | `STATS_RETENTION_DAYS` | `180` | 统计事件保留天数 |
-| `STATS_ADMIN_PASSWORD` | 空 | 统计管理密码。配置后可通过 `GET /api/stats/admin/purge-all?password=...` 清空统计数据 |
+| `STATS_ADMIN_PASSWORD` | 空 | 管理后台登录密码。配置后启用 `/admin`，用于清理统计数据和维护运行配置 |
 | `DOWNLOAD_TIMEOUT` | `120s` | 上游请求超时时间 |
 | `VIDEO_MAX_QUALITY` | `480` | 为未来视频能力预留，首版暂不启用 |
 | `PREVIEW_WARMUP_ENABLED` | `true` | 是否启用普通浏览器打开后的异步元数据预热 |
 | `PREVIEW_WARMUP_THREADS` | `2` | 异步元数据预热线程数 |
 | `PREVIEW_WARMUP_QUEUE_CAPACITY` | `64` | 异步元数据预热队列上限，队列满时跳过本次预热 |
-| `NGA_PASSPORT_UID` | 空 | 可选的 NGA 登录态 UID，配置后 NGA provider 优先使用登录态抓取帖子 |
-| `NGA_PASSPORT_CID` | 空 | 可选的 NGA 登录态 CID，需与 `NGA_PASSPORT_UID` 配对使用 |
-| `LINUXDO_COOKIE` | 空 | 可选的 LINUX DO 登录态 Cookie，配置后可抓取当前账号可见但匿名不可见的主题 |
 | `LOG_LEVEL` | `INFO` | 日志级别 |
+
+### 管理后台
+
+访问 `/admin/login` 使用 `STATS_ADMIN_PASSWORD` 登录，登录后进入 `/admin`。后台会签发 HttpOnly Cookie，`GET /api/admin/session` 仅用于页面刷新时确认当前登录状态，不返回敏感配置。
+
+后台包含四个功能区：
+
+- 清理统计数据：调用 `POST /api/admin/stats/purge-all` 删除统计事件和链接聚合记录。
+- 提示词字典：维护 `style -> prompt`，`prompt` 可包含 `{raw_content}` 占位符；未包含时服务会把原文内容追加到提示词末尾。
+- Provider 配置：维护 LinuxDo Cookie key/value（`_t`、`cf_clearance`、`_forum_session`）和 NGA 登录态（`NGA_PASSPORT_UID`、`NGA_PASSPORT_CID`）。这些值是运行时唯一来源，不再读取对应论坛环境变量。
+- AI 服务配置：支持多条 AI Provider，按启用状态和排序 fallback。`BaseURL` 填到 `/v1` 即可，例如 `https://api.openai.com/v1`，接口格式通过 Chat Completions / Responses 下拉框选择。API Key 按后台要求明文返回。
 
 ### 新增 provider
 

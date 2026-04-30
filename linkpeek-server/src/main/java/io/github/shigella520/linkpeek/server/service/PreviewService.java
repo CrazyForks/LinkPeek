@@ -6,6 +6,7 @@ import io.github.shigella520.linkpeek.core.model.PreviewKey;
 import io.github.shigella520.linkpeek.core.model.PreviewMetadata;
 import io.github.shigella520.linkpeek.core.provider.PreviewProvider;
 import io.github.shigella520.linkpeek.core.util.UrlNormalizer;
+import io.github.shigella520.linkpeek.server.ai.AiTitleService;
 import io.github.shigella520.linkpeek.server.cache.DiskCacheManager;
 import org.springframework.stereotype.Service;
 
@@ -19,10 +20,16 @@ import java.util.concurrent.locks.ReentrantLock;
 public class PreviewService {
     private final PreviewProviderRegistry providerRegistry;
     private final DiskCacheManager cacheManager;
+    private final AiTitleService aiTitleService;
 
-    public PreviewService(PreviewProviderRegistry providerRegistry, DiskCacheManager cacheManager) {
+    public PreviewService(
+            PreviewProviderRegistry providerRegistry,
+            DiskCacheManager cacheManager,
+            AiTitleService aiTitleService
+    ) {
         this.providerRegistry = providerRegistry;
         this.cacheManager = cacheManager;
+        this.aiTitleService = aiTitleService;
     }
 
     public ResolvedPreview prepare(String rawUrl) {
@@ -39,6 +46,34 @@ public class PreviewService {
     }
 
     public PreviewLoadResult loadPreview(ResolvedPreview resolvedPreview) {
+        return loadPreview(resolvedPreview, null);
+    }
+
+    public PreviewLoadResult loadPreview(ResolvedPreview resolvedPreview, String style) {
+        Optional<AiTitleService.StylePrompt> stylePrompt = aiTitleService.resolveStylePrompt(style);
+        if (stylePrompt.isPresent()) {
+            PreviewKey styledPreviewKey = aiTitleService.styledPreviewKey(resolvedPreview.canonicalUrl(), stylePrompt.get());
+            Optional<PreviewMetadata> cachedStyled = cacheManager.getMetadata(styledPreviewKey);
+            if (cachedStyled.isPresent()) {
+                return new PreviewLoadResult(resolvedPreview, cachedStyled.get(), styledPreviewKey, true, true, true);
+            }
+
+            PreviewLoadResult baseResult = loadBasePreview(resolvedPreview);
+            if (!aiTitleService.supportsAiTitle(baseResult.metadata())) {
+                return baseResult;
+            }
+            Optional<PreviewMetadata> styledMetadata = aiTitleService.generateStyledMetadata(baseResult.metadata(), stylePrompt.get());
+            if (styledMetadata.isPresent()) {
+                cacheManager.storeMetadata(styledPreviewKey, styledMetadata.get());
+                return new PreviewLoadResult(resolvedPreview, styledMetadata.get(), styledPreviewKey, false, true, true);
+            }
+            return baseResult.withAiStats(true, false);
+        }
+
+        return loadBasePreview(resolvedPreview);
+    }
+
+    private PreviewLoadResult loadBasePreview(ResolvedPreview resolvedPreview) {
         Optional<PreviewMetadata> cached = cacheManager.getMetadata(resolvedPreview.previewKey());
         if (cached.isPresent()) {
             return new PreviewLoadResult(resolvedPreview, cached.get(), true);
@@ -105,8 +140,18 @@ public class PreviewService {
     public record PreviewLoadResult(
             ResolvedPreview resolvedPreview,
             PreviewMetadata metadata,
-            boolean cacheHit
+            PreviewKey previewKey,
+            boolean cacheHit,
+            boolean aiRequested,
+            boolean aiSucceeded
     ) {
+        public PreviewLoadResult(ResolvedPreview resolvedPreview, PreviewMetadata metadata, boolean cacheHit) {
+            this(resolvedPreview, metadata, resolvedPreview.previewKey(), cacheHit, false, false);
+        }
+
+        public PreviewLoadResult withAiStats(boolean aiRequested, boolean aiSucceeded) {
+            return new PreviewLoadResult(resolvedPreview, metadata, previewKey, cacheHit, aiRequested, aiSucceeded);
+        }
     }
 
     public record ThumbnailResult(

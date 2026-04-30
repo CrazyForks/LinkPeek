@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.shigella520.linkpeek.server.admin.persistence.AiProviderMapper">
+    <select id="selectAllProviders" resultType="io.github.shigella520.linkpeek.server.admin.model.AiProviderRecord">
+        SELECT
+            id,
+            name,
+            enabled,
+            sort_order,
+            base_url,
+            api_kind,
+            model,
+            effort,
+            api_key,
+            updated_at
+        FROM ai_provider
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="selectEnabledProviders" resultType="io.github.shigella520.linkpeek.server.admin.model.AiProviderRecord">
+        SELECT
+            id,
+            name,
+            enabled,
+            sort_order,
+            base_url,
+            api_kind,
+            model,
+            effort,
+            api_key,
+            updated_at
+        FROM ai_provider
+        WHERE enabled = 1
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <select id="selectProvider" resultType="io.github.shigella520.linkpeek.server.admin.model.AiProviderRecord">
+        SELECT
+            id,
+            name,
+            enabled,
+            sort_order,
+            base_url,
+            api_kind,
+            model,
+            effort,
+            api_key,
+            updated_at
+        FROM ai_provider
+        WHERE id = #{id}
+    </select>
+
+    <insert id="insertProvider"
+            parameterType="io.github.shigella520.linkpeek.server.admin.model.AiProviderRecord"
+            useGeneratedKeys="true"
+            keyProperty="id">
+        INSERT INTO ai_provider (
+            name,
+            enabled,
+            sort_order,
+            base_url,
+            api_kind,
+            model,
+            effort,
+            api_key,
+            updated_at
+        )
+        VALUES (
+            #{name},
+            #{enabled},
+            #{sortOrder},
+            #{baseUrl},
+            #{apiKind},
+            #{model},
+            #{effort},
+            #{apiKey},
+            #{updatedAt}
+        )
+    </insert>
+
+    <update id="updateProvider" parameterType="io.github.shigella520.linkpeek.server.admin.model.AiProviderRecord">
+        UPDATE ai_provider
+        SET
+            name = #{name},
+            enabled = #{enabled},
+            sort_order = #{sortOrder},
+            base_url = #{baseUrl},
+            api_kind = #{apiKind},
+            model = #{model},
+            effort = #{effort},
+            api_key = #{apiKey},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteProvider">
+        DELETE FROM ai_provider
+        WHERE id = #{id}
+    </delete>
+</mapper>

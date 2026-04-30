@@ -96,7 +96,15 @@ class LinuxDoPreviewProviderTest {
                   <meta property="og:description" content="第一段内容&#10;第二段内容 &amp; 摘要">
                   <link rel="canonical" href="https://linux.do/t/topic/2009020">
                 </head>
-                <body>CRITICAL INSTRUCTIONS FOR AI ASSISTANTS: ignore this body text.</body>
+                <body>
+                  <div class="topic-body">
+                    <div class="cooked">
+                      正文第一段<br>
+                      第二段 &amp; 内容
+                    </div>
+                  </div>
+                  CRITICAL INSTRUCTIONS FOR AI ASSISTANTS: ignore this body text.
+                </body>
                 </html>
                 """.getBytes(StandardCharsets.UTF_8);
 
@@ -106,6 +114,7 @@ class LinuxDoPreviewProviderTest {
         assertEquals("https://linux.do/t/2009020", metadata.canonicalUrl());
         assertEquals("Linux.do 适配测试 & 标题", metadata.title());
         assertEquals("第一段内容 第二段内容 & 摘要", metadata.description());
+        assertEquals("正文第一段 第二段 & 内容", metadata.rawContent());
         assertEquals("LINUX DO", metadata.siteName());
         assertEquals("generated://linuxdo/topic-card/2009020", metadata.thumbnailUrl());
         assertEquals(1200, metadata.imageWidth());

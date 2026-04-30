@@ -106,6 +106,7 @@ class V2exPreviewProviderTest {
         assertEquals("https://www.v2ex.com/t/1205886", metadata.canonicalUrl());
         assertEquals("今日份 GPT 5.4 笑话", metadata.title());
         assertEquals("OpenAI - @Zhuzhuchenyan - https://i.v2ex.co/4828f6ki.png", metadata.description());
+        assertEquals("https://i.v2ex.co/4828f6ki.png", metadata.rawContent());
         assertTrue(metadata.thumbnailUrl().startsWith("generated://v2ex/title-card/"));
         assertEquals(1200, metadata.imageWidth());
         assertEquals(630, metadata.imageHeight());
@@ -131,6 +132,7 @@ class V2exPreviewProviderTest {
         PreviewMetadata metadata = provider.resolve(URI.create("https://www.v2ex.com/t/1206093"));
 
         assertTrue(metadata.thumbnailUrl().startsWith("generated://v2ex/title-card/"));
+        assertEquals("如果你在用 Planet...", metadata.rawContent());
         assertEquals(1200, metadata.imageWidth());
         assertEquals(630, metadata.imageHeight());
     }

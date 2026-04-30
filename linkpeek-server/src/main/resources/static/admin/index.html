@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LinkPeek Admin</title>
+    <link rel="icon" href="/favicon.ico">
+    <link rel="stylesheet" href="/admin/styles.css">
+</head>
+<body>
+<header class="topbar">
+    <div>
+        <p class="eyebrow">Management</p>
+        <h1>LinkPeek Admin</h1>
+    </div>
+    <nav class="topbar-actions">
+        <a href="/dashboard">Dashboard</a>
+        <button type="button" id="logout-button" hidden>退出</button>
+    </nav>
+</header>
+
+<main>
+    <section id="admin-shell" class="admin-shell" hidden>
+        <div class="workspace">
+            <section class="panel" id="prompts">
+                <div class="panel-head">
+                    <div>
+                        <p class="panel-kicker">Prompts</p>
+                        <h2>提示词字典</h2>
+                    </div>
+                    <button type="button" id="prompt-new-button">新建提示词</button>
+                </div>
+                <p id="prompt-feedback" class="feedback" role="status" aria-live="polite"></p>
+                <div class="table-shell">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>Style</th>
+                            <th>Prompt</th>
+                            <th>操作</th>
+                        </tr>
+                        </thead>
+                        <tbody id="prompt-table"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="panel" id="ai-providers">
+                <div class="panel-head">
+                    <div>
+                        <p class="panel-kicker">AI</p>
+                        <h2>AI 服务配置</h2>
+                    </div>
+                    <button type="button" id="ai-new-button">新建 AI Provider</button>
+                </div>
+                <p id="ai-feedback" class="feedback" role="status" aria-live="polite"></p>
+                <div class="table-shell">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>BaseURL</th>
+                            <th>Format</th>
+                            <th>Model</th>
+                            <th>Order</th>
+                            <th>Enabled</th>
+                            <th>操作</th>
+                        </tr>
+                        </thead>
+                        <tbody id="ai-table"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="panel" id="provider-config">
+                <div class="panel-head">
+                    <div>
+                        <p class="panel-kicker">Providers</p>
+                        <h2>Provider 配置</h2>
+                    </div>
+                </div>
+                <form id="provider-form" class="provider-grid">
+                    <fieldset>
+                        <legend>LinuxDo Cookie</legend>
+                        <label>
+                            <span>_t</span>
+                            <input data-provider="linuxdo" data-key="_t" type="text" autocomplete="off">
+                        </label>
+                        <label>
+                            <span>cf_clearance</span>
+                            <input data-provider="linuxdo" data-key="cf_clearance" type="text" autocomplete="off">
+                        </label>
+                        <label>
+                            <span>_forum_session</span>
+                            <input data-provider="linuxdo" data-key="_forum_session" type="text" autocomplete="off">
+                        </label>
+                    </fieldset>
+                    <fieldset>
+                        <legend>NGA Cookie</legend>
+                        <label>
+                            <span>NGA_PASSPORT_UID</span>
+                            <input data-provider="nga" data-key="NGA_PASSPORT_UID" type="text" autocomplete="off">
+                        </label>
+                        <label>
+                            <span>NGA_PASSPORT_CID</span>
+                            <input data-provider="nga" data-key="NGA_PASSPORT_CID" type="text" autocomplete="off">
+                        </label>
+                    </fieldset>
+                    <button type="submit">保存 Provider 配置</button>
+                </form>
+                <p id="provider-feedback" class="feedback" role="status" aria-live="polite"></p>
+            </section>
+
+            <section class="panel" id="purge">
+                <div class="panel-head">
+                    <div>
+                        <p class="panel-kicker">Stats</p>
+                        <h2>清理统计数据</h2>
+                    </div>
+                    <button type="button" class="danger" id="purge-button">清理全部统计数据</button>
+                </div>
+                <p class="description">删除全部统计事件和链接聚合记录，执行后无法恢复。</p>
+                <p id="purge-feedback" class="feedback" role="status" aria-live="polite"></p>
+            </section>
+        </div>
+    </section>
+</main>
+
+<div class="modal-shell" id="prompt-modal" hidden>
+    <div class="modal-backdrop" data-close-modal="prompt"></div>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="prompt-modal-title">
+        <div class="modal-head">
+            <h3 id="prompt-modal-title">新建提示词</h3>
+            <button type="button" class="secondary" id="prompt-cancel-button">取消</button>
+        </div>
+        <form id="prompt-form" class="grid-form">
+            <label>
+                <span>Style</span>
+                <input id="prompt-style" type="text" placeholder="fun" autocomplete="off" required>
+            </label>
+            <label class="wide">
+                <span>Prompt</span>
+                <textarea id="prompt-text" rows="7" placeholder="请基于 {raw_content} 生成一个更有吸引力的标题" required></textarea>
+                <span class="field-hint">可用占位符：{raw_content}。如果未使用 {raw_content}，系统会将原文内容自动追加到提示词末尾。</span>
+            </label>
+            <div class="modal-actions wide">
+                <button type="submit">保存提示词</button>
+            </div>
+        </form>
+        <p id="prompt-modal-feedback" class="feedback" role="status" aria-live="polite"></p>
+    </section>
+</div>
+
+<div class="modal-shell" id="ai-modal" hidden>
+    <div class="modal-backdrop" data-close-modal="ai"></div>
+    <section class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="ai-modal-title">
+        <div class="modal-head">
+            <h3 id="ai-modal-title">新建 AI Provider</h3>
+            <button type="button" class="secondary" id="ai-cancel-button">取消</button>
+        </div>
+        <form id="ai-form" class="grid-form">
+            <input id="ai-id" type="hidden">
+            <label>
+                <span>Name</span>
+                <input id="ai-name" type="text" placeholder="OpenAI" autocomplete="off" required>
+            </label>
+            <label>
+                <span>Sort Order</span>
+                <input id="ai-sort-order" type="number" value="100" required>
+            </label>
+            <label class="wide">
+                <span>BaseURL</span>
+                <input id="ai-base-url" type="url" placeholder="https://api.openai.com/v1" autocomplete="off" required>
+                <span class="field-hint">只填写到 /v1，例如 OpenAI: https://api.openai.com/v1。接口格式在下方选择。</span>
+            </label>
+            <label>
+                <span>Format</span>
+                <select id="ai-api-kind" required>
+                    <option value="CHAT_COMPLETIONS">Chat Completions</option>
+                    <option value="RESPONSES">Responses</option>
+                </select>
+            </label>
+            <label>
+                <span>Model</span>
+                <input id="ai-model" type="text" placeholder="gpt-5-mini" autocomplete="off" required>
+            </label>
+            <label>
+                <span>Effort</span>
+                <input id="ai-effort" type="text" placeholder="low" autocomplete="off">
+            </label>
+            <label class="wide">
+                <span>APIKey</span>
+                <input id="ai-api-key" type="password" autocomplete="off">
+            </label>
+            <label class="checkbox-row">
+                <input id="ai-enabled" type="checkbox" checked>
+                <span>启用</span>
+            </label>
+            <div class="modal-actions">
+                <button type="submit">保存 AI Provider</button>
+            </div>
+        </form>
+        <p id="ai-modal-feedback" class="feedback" role="status" aria-live="polite"></p>
+    </section>
+</div>
+
+<script src="/admin/app.js"></script>
+</body>
+</html>

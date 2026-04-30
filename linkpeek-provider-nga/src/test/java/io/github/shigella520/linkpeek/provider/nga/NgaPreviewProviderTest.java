@@ -100,6 +100,7 @@ class NgaPreviewProviderTest {
         assertEquals("https://bbs.nga.cn/read.php?tid=46581611", metadata.canonicalUrl());
         assertEquals("[水区] 这是一个测试贴", metadata.title());
         assertEquals("NGA", metadata.description());
+        assertEquals("第一段内容 第二段内容，顺便带一点 HTML & 实体。", metadata.rawContent());
         assertTrue(metadata.thumbnailUrl().startsWith("generated://nga/thread-card/46581611"));
         assertEquals(URI.create("https://bbs.nga.cn/read.php?tid=46581611"), httpClient.lastRequestUri);
     }
@@ -120,6 +121,7 @@ class NgaPreviewProviderTest {
 
         assertEquals("NGA 测试帖子", metadata.title());
         assertEquals("NGA", metadata.description());
+        assertEquals("帖子摘要内容", metadata.rawContent());
     }
 
     @Test

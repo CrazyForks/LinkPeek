@@ -1,7 +1,9 @@
 package io.github.shigella520.linkpeek.server.controller;
 
 import io.github.shigella520.linkpeek.server.config.LinkPeekProperties;
+import io.github.shigella520.linkpeek.server.admin.service.AdminAuthService;
 import io.swagger.v3.oas.annotations.Hidden;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
@@ -23,9 +25,11 @@ public class DashboardController {
     private static final Resource DEFAULT_FAVICON = new ClassPathResource("static/dashboard/DefaultIcon.svg");
 
     private final LinkPeekProperties linkPeekProperties;
+    private final AdminAuthService adminAuthService;
 
-    public DashboardController(LinkPeekProperties linkPeekProperties) {
+    public DashboardController(LinkPeekProperties linkPeekProperties, AdminAuthService adminAuthService) {
         this.linkPeekProperties = linkPeekProperties;
+        this.adminAuthService = adminAuthService;
     }
 
     @GetMapping("/")
@@ -42,6 +46,27 @@ public class DashboardController {
         return ResponseEntity.ok()
                 .contentType(MediaType.TEXT_HTML)
                 .body(new ClassPathResource("static/dashboard/index.html"));
+    }
+
+    @GetMapping("/admin")
+    @Hidden
+    public ResponseEntity<Resource> admin(HttpServletRequest request) {
+        if (!adminAuthService.isAuthenticated(request)) {
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .location(URI.create("/admin/login?next=/admin"))
+                    .build();
+        }
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_HTML)
+                .body(new ClassPathResource("static/admin/index.html"));
+    }
+
+    @GetMapping("/admin/login")
+    @Hidden
+    public ResponseEntity<Resource> adminLogin() {
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_HTML)
+                .body(new ClassPathResource("static/admin/login.html"));
     }
 
     @GetMapping("/favicon.ico")

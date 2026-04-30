@@ -21,6 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -31,6 +32,8 @@ public class LinuxDoPreviewProvider implements PreviewProvider {
     private static final Pattern TITLE_TAG_PATTERN = Pattern.compile("(?is)<title[^>]*>(.*?)</title>");
     private static final Pattern META_TAG_PATTERN = Pattern.compile("(?is)<meta\\b[^>]*>");
     private static final Pattern ATTRIBUTE_PATTERN = Pattern.compile("(?is)([a-zA-Z_:][-a-zA-Z0-9_:.]*)\\s*=\\s*(\"([^\"]*)\"|'([^']*)'|([^\\s\"'>/]+))");
+    private static final Pattern COOKED_BLOCK_PATTERN = Pattern.compile("(?is)<div\\b[^>]*class=[\"'][^\"']*\\bcooked\\b[^\"']*[\"'][^>]*>(.*?)</div>");
+    private static final Pattern TAG_PATTERN = Pattern.compile("(?is)<[^>]+>");
     private static final Pattern NUMERIC_ENTITY_PATTERN = Pattern.compile("&#(x?[0-9A-Fa-f]+);");
 
     private static final String CANONICAL_HOST = "linux.do";
@@ -39,13 +42,14 @@ public class LinuxDoPreviewProvider implements PreviewProvider {
     private static final int CARD_WIDTH = TitleCardRenderer.WIDTH;
     private static final int CARD_HEIGHT = TitleCardRenderer.HEIGHT;
     private static final int MAX_DESCRIPTION_LENGTH = 280;
+    private static final int MAX_RAW_CONTENT_LENGTH = 12_000;
     private static final String ELLIPSIS = "…";
 
     private final HttpClient httpClient;
     private final URI pageBaseUri;
     private final Duration requestTimeout;
     private final String userAgent;
-    private final String cookieHeader;
+    private final Supplier<String> cookieHeaderSupplier;
 
     public LinuxDoPreviewProvider(
             HttpClient httpClient,
@@ -53,7 +57,7 @@ public class LinuxDoPreviewProvider implements PreviewProvider {
             Duration requestTimeout,
             String userAgent
     ) {
-        this(httpClient, pageBaseUri, requestTimeout, userAgent, null);
+        this(httpClient, pageBaseUri, requestTimeout, userAgent, (String) null);
     }
 
     public LinuxDoPreviewProvider(
@@ -63,11 +67,21 @@ public class LinuxDoPreviewProvider implements PreviewProvider {
             String userAgent,
             String cookieHeader
     ) {
+        this(httpClient, pageBaseUri, requestTimeout, userAgent, () -> cookieHeader);
+    }
+
+    public LinuxDoPreviewProvider(
+            HttpClient httpClient,
+            URI pageBaseUri,
+            Duration requestTimeout,
+            String userAgent,
+            Supplier<String> cookieHeaderSupplier
+    ) {
         this.httpClient = httpClient;
         this.pageBaseUri = pageBaseUri;
         this.requestTimeout = requestTimeout;
         this.userAgent = userAgent;
-        this.cookieHeader = trimToNull(cookieHeader);
+        this.cookieHeaderSupplier = cookieHeaderSupplier == null ? () -> null : cookieHeaderSupplier;
     }
 
     @Override
@@ -104,6 +118,7 @@ public class LinuxDoPreviewProvider implements PreviewProvider {
         String topicId = extractTopicId(canonicalUrl)
                 .orElseThrow(() -> new UnsupportedPreviewUrlException("Only Linux.do topic URLs are supported."));
         URI requestUri = topicPageUri(normalizedSourceUrl, topicId);
+        String cookieHeader = trimToNull(cookieHeaderSupplier.get());
 
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(requestUri)
                 .timeout(requestTimeout)
@@ -119,7 +134,7 @@ public class LinuxDoPreviewProvider implements PreviewProvider {
         try {
             HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() >= 400) {
-                throw new UpstreamFetchException(upstreamHttpErrorMessage(response.statusCode()));
+                throw new UpstreamFetchException(upstreamHttpErrorMessage(response.statusCode(), cookieHeader));
             }
 
             String html = new String(response.body(), StandardCharsets.UTF_8);
@@ -127,6 +142,7 @@ public class LinuxDoPreviewProvider implements PreviewProvider {
             if (title.isBlank()) {
                 throw new UpstreamFetchException("Failed to parse Linux.do topic title from the page.");
             }
+            String rawContent = extractRawContent(html);
 
             return new PreviewMetadata(
                     normalizedSourceUrl.toString(),
@@ -138,7 +154,8 @@ public class LinuxDoPreviewProvider implements PreviewProvider {
                     TITLE_CARD_PREFIX + topicId,
                     CARD_WIDTH,
                     CARD_HEIGHT,
-                    ContentType.ARTICLE
+                    ContentType.ARTICLE,
+                    rawContent
             );
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -188,9 +205,9 @@ public class LinuxDoPreviewProvider implements PreviewProvider {
         return pageBaseUri.resolve(requestPath);
     }
 
-    private String upstreamHttpErrorMessage(int statusCode) {
+    private String upstreamHttpErrorMessage(int statusCode, String cookieHeader) {
         if (statusCode == 404 && cookieHeader == null) {
-            return "Linux.do topic page returned HTTP 404. The topic may require a logged-in session; configure LINUXDO_COOKIE if it is private.";
+            return "Linux.do topic page returned HTTP 404. The topic may require a logged-in session; configure LinuxDo cookies in Provider configuration if it is private.";
         }
         return "Linux.do topic page returned HTTP " + statusCode;
     }
@@ -218,12 +235,26 @@ public class LinuxDoPreviewProvider implements PreviewProvider {
                 .orElse("");
     }
 
+    private String extractRawContent(String html) {
+        Matcher matcher = COOKED_BLOCK_PATTERN.matcher(html);
+        if (matcher.find()) {
+            return summarize(decodeAndClean(stripTags(matcher.group(1))), MAX_RAW_CONTENT_LENGTH);
+        }
+        return extractMetaContent(html, "description")
+                .map(value -> summarize(value, MAX_RAW_CONTENT_LENGTH))
+                .orElse("");
+    }
+
     private String summarize(String value) {
+        return summarize(value, MAX_DESCRIPTION_LENGTH);
+    }
+
+    private String summarize(String value, int maxLength) {
         String compact = cleanText(value);
-        if (compact.length() <= MAX_DESCRIPTION_LENGTH) {
+        if (compact.length() <= maxLength) {
             return compact;
         }
-        return compact.substring(0, MAX_DESCRIPTION_LENGTH - 1).stripTrailing() + ELLIPSIS;
+        return compact.substring(0, maxLength - 1).stripTrailing() + ELLIPSIS;
     }
 
     private Optional<String> extractMetaContent(String html, String key) {
@@ -282,6 +313,14 @@ public class LinuxDoPreviewProvider implements PreviewProvider {
 
     private String decodeAndClean(String value) {
         return cleanText(decodeHtmlEntities(value));
+    }
+
+    private String stripTags(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return TAG_PATTERN.matcher(value.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n"))
+                .replaceAll(" ");
     }
 
     private String decodeHtmlEntities(String value) {

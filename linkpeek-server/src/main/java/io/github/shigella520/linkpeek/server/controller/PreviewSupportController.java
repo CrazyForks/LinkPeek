@@ -2,6 +2,7 @@ package io.github.shigella520.linkpeek.server.controller;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.shigella520.linkpeek.core.error.InvalidPreviewUrlException;
+import io.github.shigella520.linkpeek.server.admin.persistence.AdminPromptMapper;
 import io.github.shigella520.linkpeek.server.service.PreviewService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -15,15 +16,19 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @Tag(name = "Preview", description = "统一链接预览入口")
 public class PreviewSupportController {
     private static final String INVALID_URL = "INVALID_URL";
 
     private final PreviewService previewService;
+    private final AdminPromptMapper adminPromptMapper;
 
-    public PreviewSupportController(PreviewService previewService) {
+    public PreviewSupportController(PreviewService previewService, AdminPromptMapper adminPromptMapper) {
         this.previewService = previewService;
+        this.adminPromptMapper = adminPromptMapper;
     }
 
     @GetMapping(value = "/api/preview/support", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -49,7 +54,19 @@ public class PreviewSupportController {
         }
     }
 
-    private ResponseEntity<SupportResponse> response(HttpStatus status, SupportResponse body) {
+    @GetMapping(value = "/api/preview/styles", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(
+            summary = "获取可用 AI 标题样式",
+            description = "公开返回后台已配置的 style 名称列表，不返回提示词内容，便于 Dashboard 和快捷指令生成 preview URL。",
+            responses = {
+                    @ApiResponse(responseCode = "200", description = "Style 列表")
+            }
+    )
+    public ResponseEntity<StyleListResponse> styles() {
+        return response(HttpStatus.OK, new StyleListResponse(adminPromptMapper.selectStyles()));
+    }
+
+    private <T> ResponseEntity<T> response(HttpStatus status, T body) {
         return ResponseEntity.status(status)
                 .cacheControl(CacheControl.noStore())
                 .contentType(MediaType.APPLICATION_JSON)
@@ -62,5 +79,8 @@ public class PreviewSupportController {
             String errorCode,
             String message
     ) {
+    }
+
+    public record StyleListResponse(List<String> styles) {
     }
 }

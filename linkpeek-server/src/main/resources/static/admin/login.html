@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LinkPeek Admin Login</title>
+    <link rel="icon" href="/favicon.ico">
+    <link rel="stylesheet" href="/admin/styles.css">
+</head>
+<body class="login-page">
+<main class="login-main">
+    <section class="login-card">
+        <div class="login-head">
+            <p class="eyebrow">Management</p>
+            <h1>LinkPeek Admin</h1>
+        </div>
+        <form id="login-form" class="login-form">
+            <h2>后台登录</h2>
+            <label>
+                <span>管理密码</span>
+                <input id="login-password" type="password" autocomplete="current-password" required autofocus>
+            </label>
+            <button type="submit">登录</button>
+            <p id="login-feedback" class="feedback" role="status" aria-live="polite"></p>
+        </form>
+        <a class="login-dashboard-link" href="/dashboard">返回 Dashboard</a>
+    </section>
+</main>
+
+<script src="/admin/login.js"></script>
+</body>
+</html>
