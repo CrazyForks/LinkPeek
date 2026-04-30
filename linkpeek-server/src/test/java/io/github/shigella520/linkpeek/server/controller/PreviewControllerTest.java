@@ -589,6 +589,9 @@ class PreviewControllerTest {
         mockMvc.perform(post("/api/admin/stats/purge-all"))
                 .andExpect(status().isUnauthorized());
 
+        mockMvc.perform(post("/api/admin/ai-providers/1/test"))
+                .andExpect(status().isUnauthorized());
+
         org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM stats_event", Integer.class));
         org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM stats_link", Integer.class));
     }
@@ -652,6 +655,20 @@ class PreviewControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].apiKind").value("RESPONSES"))
                 .andExpect(jsonPath("$[0].apiKey").value("plain-key"));
+
+        Long providerId = jdbcTemplate.queryForObject("SELECT id FROM ai_provider WHERE name = ?", Long.class, "OpenAI");
+        mockMvc.perform(post("/api/admin/ai-providers/{id}/test", providerId)
+                        .cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.output").value("AI title"));
+
+        testAiTitleClient.generatedTitle.set(null);
+        mockMvc.perform(post("/api/admin/ai-providers/{id}/test", providerId)
+                        .cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.message").value("AI 服务返回空内容。"));
 
         mockMvc.perform(delete("/api/admin/prompts/fun")
                         .cookie(cookie))

@@ -233,12 +233,16 @@
                 <td>${provider.enabled ? "启用" : "禁用"}</td>
                 <td>
                     <div class="row-actions">
+                        <button type="button" data-test-ai="${provider.id}" class="secondary test-button">测试</button>
                         <button type="button" data-edit-ai="${provider.id}" class="secondary">编辑</button>
                         <button type="button" data-delete-ai="${provider.id}" class="danger">删除</button>
                     </div>
                 </td>
             </tr>
         `).join("");
+        body.querySelectorAll("[data-test-ai]").forEach((button) => {
+            button.addEventListener("click", () => testAiProvider(button));
+        });
         body.querySelectorAll("[data-edit-ai]").forEach((button) => {
             button.addEventListener("click", () => openAiFormForEdit(Number(button.dataset.editAi)));
         });
@@ -251,6 +255,34 @@
                 await loadAiProviders();
             });
         });
+    }
+
+    async function testAiProvider(button) {
+        const providerId = button.dataset.testAi;
+        button.disabled = true;
+        button.classList.remove("is-success", "is-error");
+        button.textContent = "测试中";
+        button.removeAttribute("title");
+        setFeedback("ai-feedback", "正在测试 AI Provider...", "");
+        try {
+            const result = await fetchJson(`/api/admin/ai-providers/${encodeURIComponent(providerId)}/test`, {
+                method: "POST"
+            });
+            button.classList.toggle("is-success", Boolean(result.success));
+            button.classList.toggle("is-error", !result.success);
+            button.textContent = result.success ? "成功" : "失败";
+            button.title = result.message || "";
+            const duration = typeof result.durationMs === "number" ? `，耗时 ${result.durationMs}ms` : "";
+            const output = result.output ? `，返回：${result.output}` : "";
+            setFeedback("ai-feedback", `${result.message || (result.success ? "测试成功。" : "测试失败。")}${duration}${output}`, result.success ? "is-success" : "is-error");
+        } catch (error) {
+            button.classList.add("is-error");
+            button.textContent = "失败";
+            button.title = error.message;
+            setFeedback("ai-feedback", error.message, "is-error");
+        } finally {
+            button.disabled = false;
+        }
     }
 
     function openPromptModalForCreate() {

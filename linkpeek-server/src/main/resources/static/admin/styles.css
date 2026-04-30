@@ -103,6 +103,18 @@ button.danger {
     background: var(--danger);
 }
 
+button.test-button.is-success {
+    border-color: rgba(8, 116, 67, 0.22);
+    background: var(--success);
+    color: #ffffff;
+}
+
+button.test-button.is-error {
+    border-color: rgba(180, 35, 24, 0.24);
+    background: var(--danger);
+    color: #ffffff;
+}
+
 button:disabled {
     opacity: 0.55;
     cursor: not-allowed;
@@ -364,6 +376,7 @@ th {
 
 td .row-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
 }
 

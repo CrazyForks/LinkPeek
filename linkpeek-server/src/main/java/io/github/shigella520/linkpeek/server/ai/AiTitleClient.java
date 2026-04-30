@@ -26,7 +26,7 @@ public class AiTitleClient {
     private static final Logger log = LoggerFactory.getLogger(AiTitleClient.class);
 
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(45);
-    private static final int MAX_RESPONSE_LOG_CHARS = 2_000;
+    private static final int MAX_BODY_LOG_CHARS = 2_000;
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
@@ -44,12 +44,13 @@ public class AiTitleClient {
             case CHAT_COMPLETIONS -> chatCompletionsBody(provider, prompt);
         };
         log.info(
-                "ai_title_request_start providerId={} apiKind={} model={} baseUrl={} requestBytes={}",
+                "ai_title_request_start providerId={} apiKind={} model={} baseUrl={} requestBytes={} requestBody={}",
                 provider.getId(),
                 apiKind,
                 provider.getModel(),
                 endpointUri,
-                body.length
+                body.length,
+                bodySnippet(body)
         );
 
         HttpRequest.Builder builder = HttpRequest.newBuilder(endpointUri)
@@ -65,7 +66,7 @@ public class AiTitleClient {
         HttpResponse<byte[]> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofByteArray());
         long durationMs = (System.nanoTime() - startedAt) / 1_000_000;
         if (response.statusCode() >= 400) {
-            String responseBody = responseBodySnippet(response.body());
+            String responseBody = bodySnippet(response.body());
             log.warn(
                     "ai_title_http_error providerId={} apiKind={} model={} baseUrl={} status={} durationMs={} requestId={} responseBody={}",
                     provider.getId(),
@@ -80,7 +81,7 @@ public class AiTitleClient {
             throw new IOException("AI provider returned HTTP " + response.statusCode() + " body=" + responseBody);
         }
 
-        String responseBody = responseBodySnippet(response.body());
+        String responseBody = bodySnippet(response.body());
         log.info(
                 "ai_title_request_success providerId={} apiKind={} model={} baseUrl={} status={} durationMs={} requestId={} responseBytes={} responseBody={}",
                 provider.getId(),
@@ -166,7 +167,7 @@ public class AiTitleClient {
                 .orElse("n/a");
     }
 
-    private String responseBodySnippet(byte[] body) {
+    private String bodySnippet(byte[] body) {
         if (body == null || body.length == 0) {
             return "";
         }
@@ -175,9 +176,9 @@ public class AiTitleClient {
                 .replace('\n', ' ')
                 .replaceAll("\\s+", " ")
                 .strip();
-        if (text.length() <= MAX_RESPONSE_LOG_CHARS) {
+        if (text.length() <= MAX_BODY_LOG_CHARS) {
             return text;
         }
-        return text.substring(0, MAX_RESPONSE_LOG_CHARS).stripTrailing() + "...";
+        return text.substring(0, MAX_BODY_LOG_CHARS).stripTrailing() + "...";
     }
 }

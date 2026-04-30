@@ -7,6 +7,7 @@ import io.github.shigella520.linkpeek.server.admin.persistence.AiProviderMapper;
 import io.github.shigella520.linkpeek.server.admin.service.AdminAuthService;
 import io.github.shigella520.linkpeek.server.admin.service.ProviderConfigService;
 import io.github.shigella520.linkpeek.server.ai.AiApiKind;
+import io.github.shigella520.linkpeek.server.ai.AiTitleClient;
 import io.github.shigella520.linkpeek.server.stats.service.StatisticsMaintenanceService;
 import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,10 +26,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.io.IOException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Pattern;
 
 @RestController
@@ -36,11 +39,13 @@ import java.util.regex.Pattern;
 @Hidden
 public class AdminController {
     private static final Pattern STYLE_PATTERN = Pattern.compile("^[A-Za-z0-9._-]{1,64}$");
+    private static final String AI_PROVIDER_TEST_PROMPT = "请回复一行中文标题文本：LinkPeek AI Provider 测试成功。不要解释、不要 JSON、不要 Markdown、不要引号、不要换行。";
 
     private final AdminAuthService adminAuthService;
     private final AdminPromptMapper adminPromptMapper;
     private final ProviderConfigService providerConfigService;
     private final AiProviderMapper aiProviderMapper;
+    private final AiTitleClient aiTitleClient;
     private final StatisticsMaintenanceService statisticsMaintenanceService;
     private final Clock clock;
 
@@ -49,6 +54,7 @@ public class AdminController {
             AdminPromptMapper adminPromptMapper,
             ProviderConfigService providerConfigService,
             AiProviderMapper aiProviderMapper,
+            AiTitleClient aiTitleClient,
             StatisticsMaintenanceService statisticsMaintenanceService,
             Clock clock
     ) {
@@ -56,6 +62,7 @@ public class AdminController {
         this.adminPromptMapper = adminPromptMapper;
         this.providerConfigService = providerConfigService;
         this.aiProviderMapper = aiProviderMapper;
+        this.aiTitleClient = aiTitleClient;
         this.statisticsMaintenanceService = statisticsMaintenanceService;
         this.clock = clock;
     }
@@ -179,6 +186,32 @@ public class AdminController {
         return new DeleteResponse(aiProviderMapper.deleteProvider(id));
     }
 
+    @PostMapping("/ai-providers/{id}/test")
+    public AiProviderTestResponse testAiProvider(HttpServletRequest request, @PathVariable long id) {
+        adminAuthService.requireAuthenticated(request);
+        AiProviderRecord provider = aiProviderMapper.selectProvider(id);
+        if (provider == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "AI provider was not found.");
+        }
+
+        long startedAt = System.nanoTime();
+        try {
+            Optional<String> output = aiTitleClient.generateTitle(provider, AI_PROVIDER_TEST_PROMPT)
+                    .map(String::strip)
+                    .filter(StringUtils::hasText);
+            long durationMs = elapsedMillis(startedAt);
+            if (output.isPresent()) {
+                return new AiProviderTestResponse(true, "测试成功。", output.get(), durationMs);
+            }
+            return new AiProviderTestResponse(false, "AI 服务返回空内容。", "", durationMs);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            return new AiProviderTestResponse(false, "测试中断。", "", elapsedMillis(startedAt));
+        } catch (IOException | RuntimeException exception) {
+            return new AiProviderTestResponse(false, exception.getMessage(), "", elapsedMillis(startedAt));
+        }
+    }
+
     private AiProviderRecord normalizeAiProvider(Long id, AiProviderRequest request) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "AI provider payload is required.");
@@ -227,6 +260,10 @@ public class AdminController {
         return Instant.now(clock).toEpochMilli();
     }
 
+    private long elapsedMillis(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000;
+    }
+
     public record SessionResponse(boolean enabled, boolean authenticated) {
     }
 
@@ -251,6 +288,14 @@ public class AdminController {
             String model,
             String effort,
             String apiKey
+    ) {
+    }
+
+    public record AiProviderTestResponse(
+            boolean success,
+            String message,
+            String output,
+            long durationMs
     ) {
     }
 
