@@ -9,6 +9,7 @@ import io.github.shigella520.linkpeek.server.admin.model.AiProviderRecord;
 import io.github.shigella520.linkpeek.server.admin.service.AiTitleConfigService;
 import io.github.shigella520.linkpeek.server.admin.service.ProviderConfigService;
 import io.github.shigella520.linkpeek.server.ai.AiTitleClient;
+import io.github.shigella520.linkpeek.server.ai.AiTitlePrompt;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -231,7 +232,10 @@ class PreviewControllerTest {
                 .andExpect(content().string(containsString("https://api.openai.com/v1")))
                 .andExpect(content().string(containsString("prompt-modal")))
                 .andExpect(content().string(containsString("ai-title-config-form")))
-                .andExpect(content().string(containsString("ai-output-constraint")))
+                .andExpect(content().string(containsString("ai-title-format-prompt")))
+                .andExpect(content().string(containsString("Title Format Prompt")))
+                .andExpect(content().string(containsString("Style Prompt")))
+                .andExpect(content().string(not(containsString("{raw_content}"))))
                 .andExpect(content().string(containsString("ai-modal")))
                 .andExpect(content().string(not(containsString("side-nav"))))
                 .andExpect(result -> {
@@ -333,7 +337,7 @@ class PreviewControllerTest {
         long now = System.currentTimeMillis();
         jdbcTemplate.update(
                 "INSERT INTO admin_prompt (style, prompt, updated_at) VALUES (?, ?, ?)",
-                "fun", "请根据 {raw_content} 生成标题", now
+                "fun", "UC 风格", now
         );
         jdbcTemplate.update(
                 "INSERT INTO ai_provider (name, enabled, sort_order, base_url, model, effort, api_key, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -360,8 +364,9 @@ class PreviewControllerTest {
                 ));
 
         org.junit.jupiter.api.Assertions.assertEquals(1, testAiTitleClient.requests.get());
-        org.junit.jupiter.api.Assertions.assertTrue(testAiTitleClient.prompt.get().contains("原始帖子正文"));
-        org.junit.jupiter.api.Assertions.assertTrue(testAiTitleClient.prompt.get().contains("只返回一行中文标题文本"));
+        org.junit.jupiter.api.Assertions.assertEquals("UC 风格", testAiTitleClient.prompt.get().stylePrompt());
+        org.junit.jupiter.api.Assertions.assertEquals("原始帖子正文，包含需要被 AI 总结的信息。", testAiTitleClient.prompt.get().rawContent());
+        org.junit.jupiter.api.Assertions.assertTrue(testAiTitleClient.prompt.get().titleFormatPrompt().contains("只返回一行中文标题文本"));
         org.junit.jupiter.api.Assertions.assertEquals(
                 2,
                 jdbcTemplate.queryForObject(
@@ -376,7 +381,7 @@ class PreviewControllerTest {
         long now = System.currentTimeMillis();
         jdbcTemplate.update(
                 "INSERT INTO admin_prompt (style, prompt, updated_at) VALUES (?, ?, ?)",
-                "fun", "请根据 {raw_content} 生成标题", now
+                "fun", "UC 风格", now
         );
         jdbcTemplate.update(
                 "INSERT INTO ai_provider (name, enabled, sort_order, base_url, model, effort, api_key, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -666,10 +671,10 @@ class PreviewControllerTest {
         mockMvc.perform(put("/api/admin/prompts/fun")
                         .cookie(cookie)
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                        .content("{\"prompt\":\"请基于 {raw_content} 写标题\"}"))
+                        .content("{\"prompt\":\"UC 风格\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.style").value("fun"))
-                .andExpect(jsonPath("$.prompt").value("请基于 {raw_content} 写标题"));
+                .andExpect(jsonPath("$.prompt").value("UC 风格"));
 
         mockMvc.perform(get("/api/admin/prompts")
                         .cookie(cookie))
@@ -679,15 +684,15 @@ class PreviewControllerTest {
         mockMvc.perform(get("/api/admin/ai-title-config")
                         .cookie(cookie))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.outputConstraint").value(AiTitleConfigService.DEFAULT_OUTPUT_CONSTRAINT))
-                .andExpect(jsonPath("$.defaultOutputConstraint").value(AiTitleConfigService.DEFAULT_OUTPUT_CONSTRAINT));
+                .andExpect(jsonPath("$.titleFormatPrompt").value(AiTitleConfigService.DEFAULT_TITLE_FORMAT_PROMPT))
+                .andExpect(jsonPath("$.defaultTitleFormatPrompt").value(AiTitleConfigService.DEFAULT_TITLE_FORMAT_PROMPT));
 
         mockMvc.perform(put("/api/admin/ai-title-config")
                         .cookie(cookie)
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
-                        .content("{\"outputConstraint\":\"以此为标准，生成一段大于15中文字符，小于30个中文字符，客观，辩证的标题。\"}"))
+                        .content("{\"titleFormatPrompt\":\"以此为标准，生成一段大于15中文字符，小于30个中文字符，客观，辩证的标题。\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.outputConstraint").value("以此为标准，生成一段大于15中文字符，小于30个中文字符，客观，辩证的标题。"));
+                .andExpect(jsonPath("$.titleFormatPrompt").value("以此为标准，生成一段大于15中文字符，小于30个中文字符，客观，辩证的标题。"));
 
         mockMvc.perform(put("/api/admin/provider-config/linuxdo")
                         .cookie(cookie)
@@ -848,7 +853,7 @@ class PreviewControllerTest {
 
     static final class TestAiTitleClient extends AiTitleClient {
         private final AtomicInteger requests = new AtomicInteger();
-        private final AtomicReference<String> prompt = new AtomicReference<>("");
+        private final AtomicReference<AiTitlePrompt> prompt = new AtomicReference<>(new AiTitlePrompt("", "", ""));
         private final AtomicReference<String> generatedTitle = new AtomicReference<>("AI title");
 
         TestAiTitleClient() {
@@ -856,7 +861,7 @@ class PreviewControllerTest {
         }
 
         @Override
-        public Optional<String> generateTitle(AiProviderRecord provider, String prompt) {
+        public Optional<String> generateTitle(AiProviderRecord provider, AiTitlePrompt prompt) {
             requests.incrementAndGet();
             this.prompt.set(prompt);
             return Optional.ofNullable(generatedTitle.get());
@@ -864,7 +869,7 @@ class PreviewControllerTest {
 
         void reset() {
             requests.set(0);
-            prompt.set("");
+            prompt.set(new AiTitlePrompt("", "", ""));
             generatedTitle.set("AI title");
         }
     }

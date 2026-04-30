@@ -2,7 +2,7 @@
     const state = {
         prompts: [],
         aiProviders: [],
-        defaultOutputConstraint: "",
+        defaultTitleFormatPrompt: "",
         logRefreshTimer: null
     };
 
@@ -61,7 +61,7 @@
             event.preventDefault();
             const style = document.getElementById("prompt-style").value.trim();
             const prompt = document.getElementById("prompt-text").value.trim();
-            setFeedback("prompt-modal-feedback", "正在保存提示词...", "");
+            setFeedback("prompt-modal-feedback", "正在保存 Style Prompt...", "");
             try {
                 await fetchJson(`/api/admin/prompts/${encodeURIComponent(style)}`, {
                     method: "PUT",
@@ -69,7 +69,7 @@
                 });
                 closePromptModal(false);
                 await loadPrompts();
-                setFeedback("prompt-feedback", "提示词已保存。", "is-success");
+                setFeedback("prompt-feedback", "Style Prompt 已保存。", "is-success");
             } catch (error) {
                 setFeedback("prompt-modal-feedback", error.message, "is-error");
             }
@@ -79,22 +79,22 @@
     function bindAiTitleConfig() {
         document.getElementById("ai-title-config-form").addEventListener("submit", async (event) => {
             event.preventDefault();
-            const outputConstraint = document.getElementById("ai-output-constraint").value.trim();
-            setFeedback("ai-title-config-feedback", "正在保存输出格式要求...", "");
+            const titleFormatPrompt = document.getElementById("ai-title-format-prompt").value.trim();
+            setFeedback("ai-title-config-feedback", "正在保存标题格式...", "");
             try {
                 await fetchJson("/api/admin/ai-title-config", {
                     method: "PUT",
-                    body: JSON.stringify({outputConstraint})
+                    body: JSON.stringify({titleFormatPrompt})
                 });
                 await loadAiTitleConfig();
-                setFeedback("ai-title-config-feedback", "输出格式要求已保存。", "is-success");
+                setFeedback("ai-title-config-feedback", "标题格式已保存。", "is-success");
             } catch (error) {
                 setFeedback("ai-title-config-feedback", error.message, "is-error");
             }
         });
-        document.getElementById("ai-output-constraint-default-button").addEventListener("click", () => {
-            document.getElementById("ai-output-constraint").value = state.defaultOutputConstraint || "";
-            setFeedback("ai-title-config-feedback", "已填入默认输出格式要求，保存后生效。", "");
+        document.getElementById("ai-title-format-default-button").addEventListener("click", () => {
+            document.getElementById("ai-title-format-prompt").value = state.defaultTitleFormatPrompt || "";
+            setFeedback("ai-title-config-feedback", "已填入默认标题格式，保存后生效。", "");
         });
     }
 
@@ -207,8 +207,8 @@
 
     async function loadAiTitleConfig() {
         const payload = await fetchJson("/api/admin/ai-title-config");
-        state.defaultOutputConstraint = payload.defaultOutputConstraint || "";
-        document.getElementById("ai-output-constraint").value = payload.outputConstraint || "";
+        state.defaultTitleFormatPrompt = payload.defaultTitleFormatPrompt || "";
+        document.getElementById("ai-title-format-prompt").value = payload.titleFormatPrompt || "";
     }
 
     async function loadProviderConfig() {
@@ -248,7 +248,7 @@
     function renderPrompts() {
         const body = document.getElementById("prompt-table");
         if (!state.prompts.length) {
-            body.innerHTML = `<tr><td colspan="3" class="muted">暂无提示词</td></tr>`;
+            body.innerHTML = `<tr><td colspan="3" class="muted">暂无 Style Prompt</td></tr>`;
             return;
         }
         body.innerHTML = state.prompts.map((prompt) => `
@@ -386,7 +386,7 @@
 
     function openPromptModalForCreate() {
         resetPromptForm();
-        document.getElementById("prompt-modal-title").textContent = "新建提示词";
+        document.getElementById("prompt-modal-title").textContent = "新建 Style Prompt";
         document.getElementById("prompt-style").disabled = false;
         openModal("prompt-modal");
         setFeedback("prompt-modal-feedback", "", "");
@@ -395,7 +395,7 @@
 
     function openPromptModalForEdit(prompt) {
         resetPromptForm();
-        document.getElementById("prompt-modal-title").textContent = `编辑提示词：${prompt.style}`;
+        document.getElementById("prompt-modal-title").textContent = `编辑 Style Prompt：${prompt.style}`;
         document.getElementById("prompt-style").value = prompt.style;
         document.getElementById("prompt-style").disabled = true;
         document.getElementById("prompt-text").value = prompt.prompt;

@@ -26,35 +26,50 @@
                 <div class="panel-head">
                     <div>
                         <p class="panel-kicker">Prompts</p>
-                        <h2>提示词字典</h2>
+                        <h2>提示词设置</h2>
                     </div>
-                    <button type="button" id="prompt-new-button">新建提示词</button>
                 </div>
-                <p id="prompt-feedback" class="feedback" role="status" aria-live="polite"></p>
-                <div class="table-shell">
-                    <table>
-                        <thead>
-                        <tr>
-                            <th>Style</th>
-                            <th>Prompt</th>
-                            <th>操作</th>
-                        </tr>
-                        </thead>
-                        <tbody id="prompt-table"></tbody>
-                    </table>
-                </div>
-                <form id="ai-title-config-form" class="config-form">
-                    <label>
-                        <span>统一输出格式要求</span>
-                        <textarea id="ai-output-constraint" rows="4" placeholder="以此为标准，生成一段大于15中文字符，小于30个中文字符，客观，辩证的标题。&#10;&#10;输出格式要求：只返回一行中文标题文本，不要解释、不要 JSON、不要 Markdown、不要引号、不要换行。"></textarea>
-                        <span class="field-hint">每次 AI 标题总结都会追加在 style 提示词和原文之后。留空保存时将不追加统一输出要求。</span>
-                    </label>
-                    <div class="form-actions">
-                        <button type="submit">保存输出格式要求</button>
-                        <button type="button" class="secondary" id="ai-output-constraint-default-button">使用默认要求</button>
+                <div class="prompt-subsection prompt-subsection-first">
+                    <div class="subsection-head">
+                        <div>
+                            <p class="panel-kicker">Title Format Prompt</p>
+                            <h3>标题格式</h3>
+                        </div>
                     </div>
-                    <p id="ai-title-config-feedback" class="feedback" role="status" aria-live="polite"></p>
-                </form>
+                    <form id="ai-title-config-form" class="config-form">
+                        <label>
+                            <textarea id="ai-title-format-prompt" rows="4" placeholder="以此为标准，生成一段大于15中文字符，小于30个中文字符，客观，辩证的标题。&#10;&#10;输出格式要求：只返回一行中文标题文本，不要解释、不要 JSON、不要 Markdown、不要引号、不要换行。"></textarea>
+                            <span class="field-hint">作为 system 提示词发送。Style Prompt 和 Raw Content 会通过独立 user 消息发送，Raw Content 永远在最后。</span>
+                        </label>
+                        <div class="form-actions">
+                            <button type="submit">保存标题格式</button>
+                            <button type="button" class="secondary" id="ai-title-format-default-button">使用默认标题格式</button>
+                        </div>
+                        <p id="ai-title-config-feedback" class="feedback" role="status" aria-live="polite"></p>
+                    </form>
+                </div>
+                <div class="prompt-subsection">
+                    <div class="subsection-head subsection-head-actions">
+                        <div>
+                            <p class="panel-kicker">Style Prompt</p>
+                            <h3>风格</h3>
+                        </div>
+                        <button type="button" id="prompt-new-button">新建 Style Prompt</button>
+                    </div>
+                    <p id="prompt-feedback" class="feedback" role="status" aria-live="polite"></p>
+                    <div class="table-shell">
+                        <table>
+                            <thead>
+                            <tr>
+                                <th>Style</th>
+                                <th>Style Prompt</th>
+                                <th>操作</th>
+                            </tr>
+                            </thead>
+                            <tbody id="prompt-table"></tbody>
+                        </table>
+                    </div>
+                </div>
             </section>
 
             <section class="panel" id="ai-providers">
@@ -186,7 +201,7 @@
     <div class="modal-backdrop" data-close-modal="prompt"></div>
     <section class="modal" role="dialog" aria-modal="true" aria-labelledby="prompt-modal-title">
         <div class="modal-head">
-            <h3 id="prompt-modal-title">新建提示词</h3>
+            <h3 id="prompt-modal-title">新建 Style Prompt</h3>
             <button type="button" class="secondary" id="prompt-cancel-button">取消</button>
         </div>
         <form id="prompt-form" class="grid-form">
@@ -195,12 +210,12 @@
                 <input id="prompt-style" type="text" placeholder="fun" autocomplete="off" required>
             </label>
             <label class="wide">
-                <span>Prompt</span>
-                <textarea id="prompt-text" rows="7" placeholder="请基于 {raw_content} 生成一个更有吸引力的标题" required></textarea>
-                <span class="field-hint">可用占位符：{raw_content}。如果未使用 {raw_content}，系统会将原文内容自动追加到提示词末尾。</span>
+                <span>Style Prompt 风格</span>
+                <textarea id="prompt-text" rows="7" placeholder="以下是 UC 震惊部风格的标题要求：开头可使用震惊、重磅、刚刚等强情绪词，但标题仍需保留原文核心信息。" required></textarea>
+                <span class="field-hint">只填写风格要求。原文会作为 Raw Content 独立 user 消息发送，并且永远排在最后。</span>
             </label>
             <div class="modal-actions wide">
-                <button type="submit">保存提示词</button>
+                <button type="submit">保存 Style Prompt</button>
             </div>
         </form>
         <p id="prompt-modal-feedback" class="feedback" role="status" aria-live="polite"></p>

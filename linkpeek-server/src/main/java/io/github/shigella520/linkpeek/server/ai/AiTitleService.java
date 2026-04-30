@@ -27,8 +27,7 @@ import java.util.regex.Pattern;
 public class AiTitleService {
     private static final Logger log = LoggerFactory.getLogger(AiTitleService.class);
 
-    public static final String RAW_CONTENT_PLACEHOLDER = "{raw_content}";
-    public static final String OUTPUT_CONSTRAINT = AiTitleConfigService.DEFAULT_OUTPUT_CONSTRAINT;
+    public static final String DEFAULT_TITLE_FORMAT_PROMPT = AiTitleConfigService.DEFAULT_TITLE_FORMAT_PROMPT;
     private static final Pattern STYLE_PATTERN = Pattern.compile("^[A-Za-z0-9._-]{1,64}$");
     private static final int MAX_TITLE_CODE_POINTS = 120;
 
@@ -61,12 +60,12 @@ public class AiTitleService {
         if (prompt == null || !StringUtils.hasText(prompt.getPrompt())) {
             return Optional.empty();
         }
-        String outputConstraint = outputConstraint();
+        String titleFormatPrompt = titleFormatPrompt();
         return Optional.of(new StylePrompt(
                 normalizedStyle,
                 prompt.getPrompt().strip(),
-                outputConstraint,
-                sha256(prompt.getPrompt().strip() + "\n\n" + outputConstraint)
+                titleFormatPrompt,
+                sha256(prompt.getPrompt().strip() + "\n\n" + titleFormatPrompt)
         ));
     }
 
@@ -88,7 +87,7 @@ public class AiTitleService {
             return Optional.empty();
         }
 
-        String prompt = buildPrompt(stylePrompt.prompt(), metadata.rawContent(), stylePrompt.outputConstraint());
+        AiTitlePrompt prompt = buildPrompt(stylePrompt.prompt(), metadata.rawContent(), stylePrompt.titleFormatPrompt());
         List<AiProviderRecord> providers = aiProviderMapper.selectEnabledProviders();
         for (AiProviderRecord provider : providers) {
             try {
@@ -115,23 +114,12 @@ public class AiTitleService {
         return Optional.empty();
     }
 
-    public String buildPrompt(String promptTemplate, String rawContent) {
-        return buildPrompt(promptTemplate, rawContent, outputConstraint());
+    public AiTitlePrompt buildPrompt(String stylePrompt, String rawContent) {
+        return buildPrompt(stylePrompt, rawContent, titleFormatPrompt());
     }
 
-    public String buildPrompt(String promptTemplate, String rawContent, String outputConstraint) {
-        String content = rawContent == null ? "" : rawContent.strip();
-        String body;
-        if (promptTemplate.contains(RAW_CONTENT_PLACEHOLDER)) {
-            body = promptTemplate.replace(RAW_CONTENT_PLACEHOLDER, content);
-        } else {
-            body = promptTemplate.stripTrailing() + "\n\n原文内容：\n" + content;
-        }
-        String constraint = outputConstraint == null ? "" : outputConstraint.strip();
-        if (!StringUtils.hasText(constraint)) {
-            return body.stripTrailing();
-        }
-        return body.stripTrailing() + "\n\n" + constraint;
+    public AiTitlePrompt buildPrompt(String stylePrompt, String rawContent, String titleFormatPrompt) {
+        return new AiTitlePrompt(titleFormatPrompt, stylePrompt, rawContent);
     }
 
     public String cleanTitle(String rawTitle) {
@@ -217,10 +205,10 @@ public class AiTitleService {
         }
     }
 
-    private String outputConstraint() {
-        return aiTitleConfigService == null ? OUTPUT_CONSTRAINT : aiTitleConfigService.outputConstraint();
+    private String titleFormatPrompt() {
+        return aiTitleConfigService == null ? DEFAULT_TITLE_FORMAT_PROMPT : aiTitleConfigService.titleFormatPrompt();
     }
 
-    public record StylePrompt(String style, String prompt, String outputConstraint, String promptHash) {
+    public record StylePrompt(String style, String prompt, String titleFormatPrompt, String promptHash) {
     }
 }

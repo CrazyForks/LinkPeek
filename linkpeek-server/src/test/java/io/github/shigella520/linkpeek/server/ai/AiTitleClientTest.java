@@ -48,7 +48,7 @@ class AiTitleClientTest {
 
         Optional<String> title = client.generateTitle(
                 provider("https://api.example.com/v1", "CHAT_COMPLETIONS", "gpt-test", "low", "sk-test"),
-                "请生成标题"
+                prompt()
         );
 
         JsonNode body = objectMapper.readTree(httpClient.lastRequestBody);
@@ -56,8 +56,12 @@ class AiTitleClientTest {
         assertEquals("/v1/chat/completions", httpClient.lastRequestUri.getPath());
         assertEquals("Bearer sk-test", httpClient.lastAuthorization);
         assertEquals("gpt-test", body.path("model").asText());
-        assertEquals("user", body.path("messages").get(0).path("role").asText());
-        assertEquals("请生成标题", body.path("messages").get(0).path("content").asText());
+        assertEquals("system", body.path("messages").get(0).path("role").asText());
+        assertEquals("标题格式", body.path("messages").get(0).path("content").asText());
+        assertEquals("user", body.path("messages").get(1).path("role").asText());
+        assertEquals("Style Prompt\nUC 风格", body.path("messages").get(1).path("content").asText());
+        assertEquals("user", body.path("messages").get(2).path("role").asText());
+        assertEquals("Raw Content\n原文内容", body.path("messages").get(2).path("content").asText());
         assertEquals("low", body.path("reasoning_effort").asText());
     }
 
@@ -70,7 +74,7 @@ class AiTitleClientTest {
 
         Optional<String> title = client.generateTitle(
                 provider("https://api.example.com/v1", "RESPONSES", "gpt-test", "medium", ""),
-                "请生成标题"
+                prompt()
         );
 
         JsonNode body = objectMapper.readTree(httpClient.lastRequestBody);
@@ -78,7 +82,11 @@ class AiTitleClientTest {
         assertEquals("/v1/responses", httpClient.lastRequestUri.getPath());
         assertEquals("", httpClient.lastAuthorization);
         assertEquals("gpt-test", body.path("model").asText());
-        assertEquals("请生成标题", body.path("input").asText());
+        assertEquals("标题格式", body.path("instructions").asText());
+        assertEquals("user", body.path("input").get(0).path("role").asText());
+        assertEquals("Style Prompt\nUC 风格", body.path("input").get(0).path("content").asText());
+        assertEquals("user", body.path("input").get(1).path("role").asText());
+        assertEquals("Raw Content\n原文内容", body.path("input").get(1).path("content").asText());
         assertEquals("medium", body.path("reasoning").path("effort").asText());
     }
 
@@ -109,7 +117,7 @@ class AiTitleClientTest {
                 IOException.class,
                 () -> client.generateTitle(
                         provider("https://api.example.com/v1", "CHAT_COMPLETIONS", "gpt-test", "", "sk-test"),
-                        "请生成标题"
+                        prompt()
                 )
         );
 
@@ -130,6 +138,10 @@ class AiTitleClientTest {
         provider.setApiKey(apiKey);
         provider.setUpdatedAt(1L);
         return provider;
+    }
+
+    private AiTitlePrompt prompt() {
+        return new AiTitlePrompt("标题格式", "UC 风格", "原文内容");
     }
 
     private static final class CapturingHttpClient extends HttpClient {

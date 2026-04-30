@@ -16,6 +16,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,7 +37,7 @@ public class AiTitleClient {
         this.objectMapper = objectMapper;
     }
 
-    public Optional<String> generateTitle(AiProviderRecord provider, String prompt) throws IOException, InterruptedException {
+    public Optional<String> generateTitle(AiProviderRecord provider, AiTitlePrompt prompt) throws IOException, InterruptedException {
         AiApiKind apiKind = AiApiKind.fromValue(provider.getApiKind());
         URI endpointUri = apiKind.endpointUri(provider.getBaseUrl());
         byte[] body = switch (apiKind) {
@@ -101,24 +102,43 @@ public class AiTitleClient {
         };
     }
 
-    private byte[] responsesBody(AiProviderRecord provider, String prompt) throws IOException {
+    private byte[] responsesBody(AiProviderRecord provider, AiTitlePrompt prompt) throws IOException {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", provider.getModel());
-        body.put("input", prompt);
+        if (prompt.hasTitleFormatPrompt()) {
+            body.put("instructions", prompt.titleFormatPrompt());
+        }
+        body.put("input", List.of(
+                message("user", prompt.styleMessage()),
+                message("user", prompt.rawContentMessage())
+        ));
         if (StringUtils.hasText(provider.getEffort())) {
             body.put("reasoning", Map.of("effort", provider.getEffort().strip()));
         }
         return objectMapper.writeValueAsBytes(body);
     }
 
-    private byte[] chatCompletionsBody(AiProviderRecord provider, String prompt) throws IOException {
+    private byte[] chatCompletionsBody(AiProviderRecord provider, AiTitlePrompt prompt) throws IOException {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", provider.getModel());
-        body.put("messages", List.of(Map.of("role", "user", "content", prompt)));
+        List<Map<String, String>> messages = new ArrayList<>();
+        if (prompt.hasTitleFormatPrompt()) {
+            messages.add(message("system", prompt.titleFormatPrompt()));
+        }
+        messages.add(message("user", prompt.styleMessage()));
+        messages.add(message("user", prompt.rawContentMessage()));
+        body.put("messages", messages);
         if (StringUtils.hasText(provider.getEffort())) {
             body.put("reasoning_effort", provider.getEffort().strip());
         }
         return objectMapper.writeValueAsBytes(body);
+    }
+
+    private Map<String, String> message(String role, String content) {
+        Map<String, String> message = new LinkedHashMap<>();
+        message.put("role", role);
+        message.put("content", content);
+        return message;
     }
 
     private Optional<String> extractResponsesText(JsonNode payload) {

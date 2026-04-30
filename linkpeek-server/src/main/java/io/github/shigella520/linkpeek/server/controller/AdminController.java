@@ -10,6 +10,7 @@ import io.github.shigella520.linkpeek.server.admin.service.ProviderConfigService
 import io.github.shigella520.linkpeek.server.admin.service.ServiceLogService;
 import io.github.shigella520.linkpeek.server.ai.AiApiKind;
 import io.github.shigella520.linkpeek.server.ai.AiTitleClient;
+import io.github.shigella520.linkpeek.server.ai.AiTitlePrompt;
 import io.github.shigella520.linkpeek.server.stats.service.StatisticsMaintenanceService;
 import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.servlet.http.HttpServletRequest;
@@ -42,7 +43,11 @@ import java.util.regex.Pattern;
 @Hidden
 public class AdminController {
     private static final Pattern STYLE_PATTERN = Pattern.compile("^[A-Za-z0-9._-]{1,64}$");
-    private static final String AI_PROVIDER_TEST_PROMPT = "请回复一行中文标题文本：LinkPeek AI Provider 测试成功。不要解释、不要 JSON、不要 Markdown、不要引号、不要换行。";
+    private static final AiTitlePrompt AI_PROVIDER_TEST_PROMPT = new AiTitlePrompt(
+            "请只返回一行中文标题文本，不要解释、不要 JSON、不要 Markdown、不要引号、不要换行。",
+            "AI Provider 连通性测试",
+            "LinkPeek AI Provider 测试成功。"
+    );
 
     private final AdminAuthService adminAuthService;
     private final AdminPromptMapper adminPromptMapper;
@@ -165,7 +170,7 @@ public class AdminController {
         if (configRequest == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "AI title config payload is required.");
         }
-        return aiTitleConfigService.saveOutputConstraint(configRequest.outputConstraint());
+        return aiTitleConfigService.saveTitleFormatPrompt(configRequest.titleFormatPrompt());
     }
 
     @GetMapping("/provider-config")
@@ -315,7 +320,7 @@ public class AdminController {
     public record PromptRequest(String prompt) {
     }
 
-    public record AiTitleConfigRequest(String outputConstraint) {
+    public record AiTitleConfigRequest(String titleFormatPrompt) {
     }
 
     public record ProviderConfigRequest(Map<String, String> values) {

@@ -66,6 +66,11 @@ h2 {
     font-size: 20px;
 }
 
+h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
 .topbar-actions {
     display: flex;
     align-items: center;
@@ -270,8 +275,30 @@ textarea:focus {
     display: grid;
     gap: 12px;
     margin-top: 18px;
+}
+
+.prompt-subsection {
+    margin-top: 22px;
     padding-top: 18px;
     border-top: 1px solid var(--line);
+}
+
+.prompt-subsection-first {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+}
+
+.subsection-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 10px;
+}
+
+.subsection-head-actions {
+    align-items: flex-end;
 }
 
 .modal-shell {
@@ -314,7 +341,6 @@ textarea:focus {
 }
 
 .modal-head h3 {
-    margin: 0;
     font-size: 19px;
 }
 

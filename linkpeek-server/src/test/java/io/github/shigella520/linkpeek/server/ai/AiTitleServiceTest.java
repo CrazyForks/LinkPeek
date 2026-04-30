@@ -27,50 +27,55 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AiTitleServiceTest {
     @Test
-    void buildPromptReplacesRawContentPlaceholderAndAppendsOutputConstraint() {
+    void buildPromptSeparatesTitleFormatStyleAndRawContent() {
         AiTitleService service = new AiTitleService(null, new FakeAiProviderMapper(List.of()), new FakeAiTitleClient(), null);
 
-        String prompt = service.buildPrompt("请总结：{raw_content}", " 原文内容 ");
+        AiTitlePrompt prompt = service.buildPrompt("UC 风格", " 原文内容 ");
 
-        assertTrue(prompt.contains("请总结：原文内容"));
-        assertFalse(prompt.contains("原文内容：\n原文内容"));
-        assertTrue(prompt.endsWith(AiTitleService.OUTPUT_CONSTRAINT));
+        assertEquals(AiTitleService.DEFAULT_TITLE_FORMAT_PROMPT, prompt.titleFormatPrompt());
+        assertEquals("UC 风格", prompt.stylePrompt());
+        assertEquals("原文内容", prompt.rawContent());
+        assertEquals("Style Prompt\nUC 风格", prompt.styleMessage());
+        assertEquals("Raw Content\n原文内容", prompt.rawContentMessage());
     }
 
     @Test
-    void buildPromptAppendsRawContentWhenPlaceholderIsMissing() {
+    void buildPromptKeepsStylePromptAndRawContentSeparate() {
         AiTitleService service = new AiTitleService(null, new FakeAiProviderMapper(List.of()), new FakeAiTitleClient(), null);
 
-        String prompt = service.buildPrompt("请写一个标题", "帖子正文");
+        AiTitlePrompt prompt = service.buildPrompt("请参考原文语气", "帖子正文", "标题格式");
 
-        assertTrue(prompt.contains("请写一个标题\n\n原文内容：\n帖子正文"));
-        assertTrue(prompt.endsWith(AiTitleService.OUTPUT_CONSTRAINT));
+        assertEquals("请参考原文语气", prompt.stylePrompt());
+        assertEquals("帖子正文", prompt.rawContent());
+        assertEquals("标题格式", prompt.titleFormatPrompt());
     }
 
     @Test
-    void buildPromptUsesConfiguredOutputConstraint() {
+    void buildPromptUsesConfiguredTitleFormatPrompt() {
         AiTitleService service = new AiTitleService(null, new FakeAiProviderMapper(List.of()), new FakeAiTitleClient(), null);
 
-        String prompt = service.buildPrompt("请总结：{raw_content}", "原文内容", "只输出 15 到 30 个中文字符");
+        AiTitlePrompt prompt = service.buildPrompt("UC 风格", "原文内容", "只输出 15 到 30 个中文字符");
 
-        assertTrue(prompt.endsWith("只输出 15 到 30 个中文字符"));
-        assertFalse(prompt.contains(AiTitleService.OUTPUT_CONSTRAINT));
+        assertEquals("只输出 15 到 30 个中文字符", prompt.titleFormatPrompt());
+        assertEquals("UC 风格", prompt.stylePrompt());
+        assertEquals("原文内容", prompt.rawContent());
     }
 
     @Test
-    void buildPromptCanSkipOutputConstraintWhenConfiguredBlank() {
+    void buildPromptCanSkipTitleFormatPromptWhenConfiguredBlank() {
         AiTitleService service = new AiTitleService(null, new FakeAiProviderMapper(List.of()), new FakeAiTitleClient(), null);
 
-        String prompt = service.buildPrompt("请总结：{raw_content}", "原文内容", " ");
+        AiTitlePrompt prompt = service.buildPrompt("UC 风格", "原文内容", " ");
 
-        assertEquals("请总结：原文内容", prompt);
+        assertEquals("", prompt.titleFormatPrompt());
+        assertFalse(prompt.hasTitleFormatPrompt());
     }
 
     @Test
-    void resolveStylePromptIncludesOutputConstraintInPromptHash() {
+    void resolveStylePromptIncludesTitleFormatPromptInPromptHash() {
         AdminPromptRecord promptRecord = new AdminPromptRecord();
         promptRecord.setStyle("fun");
-        promptRecord.setPrompt("请总结 {raw_content}");
+        promptRecord.setPrompt("UC 风格");
         AiTitleService defaultService = new AiTitleService(
                 new FakeAdminPromptMapper(promptRecord),
                 new FakeAiProviderMapper(List.of()),
@@ -87,8 +92,8 @@ class AiTitleServiceTest {
         AiTitleService.StylePrompt defaultPrompt = defaultService.resolveStylePrompt("fun").orElseThrow();
         AiTitleService.StylePrompt customPrompt = customService.resolveStylePrompt("fun").orElseThrow();
 
-        assertEquals(AiTitleService.OUTPUT_CONSTRAINT, defaultPrompt.outputConstraint());
-        assertEquals("自定义输出要求", customPrompt.outputConstraint());
+        assertEquals(AiTitleService.DEFAULT_TITLE_FORMAT_PROMPT, defaultPrompt.titleFormatPrompt());
+        assertEquals("自定义输出要求", customPrompt.titleFormatPrompt());
         assertNotEquals(defaultPrompt.promptHash(), customPrompt.promptHash());
     }
 
@@ -115,13 +120,15 @@ class AiTitleServiceTest {
 
         Optional<PreviewMetadata> result = service.generateStyledMetadata(
                 generatedTextMetadata(),
-                new AiTitleService.StylePrompt("fun", "请总结 {raw_content}", AiTitleService.OUTPUT_CONSTRAINT, "hash")
+                new AiTitleService.StylePrompt("fun", "UC 风格", AiTitleService.DEFAULT_TITLE_FORMAT_PROMPT, "hash")
         );
 
         assertTrue(result.isPresent());
         assertEquals("最终标题", result.get().title());
         assertEquals("原始标题", generatedTextMetadata().title());
         assertIterableEquals(List.of(1L, 2L), client.requestedProviderIds);
+        assertEquals("UC 风格", client.requestedPrompts.get(0).stylePrompt());
+        assertEquals("原文正文", client.requestedPrompts.get(0).rawContent());
     }
 
     @Test
@@ -143,7 +150,7 @@ class AiTitleServiceTest {
                         ContentType.VIDEO,
                         "正文"
                 ),
-                new AiTitleService.StylePrompt("fun", "请总结 {raw_content}", AiTitleService.OUTPUT_CONSTRAINT, "hash")
+                new AiTitleService.StylePrompt("fun", "UC 风格", AiTitleService.DEFAULT_TITLE_FORMAT_PROMPT, "hash")
         );
 
         assertTrue(result.isEmpty());
@@ -301,6 +308,7 @@ class AiTitleServiceTest {
     private static final class FakeAiTitleClient extends AiTitleClient {
         private final List<Long> failProviderIds = new ArrayList<>();
         private final List<Long> requestedProviderIds = new ArrayList<>();
+        private final List<AiTitlePrompt> requestedPrompts = new ArrayList<>();
         private String title = "AI 标题";
 
         private FakeAiTitleClient() {
@@ -308,8 +316,9 @@ class AiTitleServiceTest {
         }
 
         @Override
-        public Optional<String> generateTitle(AiProviderRecord provider, String prompt) throws IOException {
+        public Optional<String> generateTitle(AiProviderRecord provider, AiTitlePrompt prompt) throws IOException {
             requestedProviderIds.add(provider.getId());
+            requestedPrompts.add(prompt);
             if (failProviderIds.contains(provider.getId())) {
                 throw new IOException("provider failed");
             }

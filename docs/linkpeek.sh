@@ -15,7 +15,7 @@
 # 自部署用户只需要改这一处。
 base_url="https://linkpeek.jianyutan.com"
 
-# 可选 AI 标题样式。留空时不追加 style 参数；需要时改成后台提示词字典里的 style。
+# 可选 AI 标题样式。留空时不追加 style 参数；需要时改成后台提示词设置里的 style。
 style=""
 
 base_url="${base_url%/}"

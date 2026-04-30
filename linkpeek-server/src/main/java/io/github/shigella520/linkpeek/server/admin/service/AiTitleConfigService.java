@@ -10,8 +10,8 @@ import java.time.Instant;
 @Service
 public class AiTitleConfigService {
     public static final String PROVIDER_AI_TITLE = "ai_title";
-    public static final String OUTPUT_CONSTRAINT_KEY = "output_constraint";
-    public static final String DEFAULT_OUTPUT_CONSTRAINT = "以此为标准，生成一段大于15中文字符，小于30个中文字符，客观，辩证的标题。"
+    public static final String TITLE_FORMAT_PROMPT_KEY = "title_format_prompt";
+    public static final String DEFAULT_TITLE_FORMAT_PROMPT = "以此为标准，生成一段大于15中文字符，小于30个中文字符，客观，辩证的标题。"
             + "\n\n输出格式要求：只返回一行中文标题文本，不要解释、不要 JSON、不要 Markdown、不要引号、不要换行。";
 
     private final ProviderConfigMapper providerConfigMapper;
@@ -23,30 +23,30 @@ public class AiTitleConfigService {
     }
 
     public AiTitleConfigResponse config() {
-        ProviderConfigRecord record = providerConfigMapper.selectConfig(PROVIDER_AI_TITLE, OUTPUT_CONSTRAINT_KEY);
+        ProviderConfigRecord record = providerConfigMapper.selectConfig(PROVIDER_AI_TITLE, TITLE_FORMAT_PROMPT_KEY);
         if (record == null) {
-            return new AiTitleConfigResponse(DEFAULT_OUTPUT_CONSTRAINT, DEFAULT_OUTPUT_CONSTRAINT, null);
+            return new AiTitleConfigResponse(DEFAULT_TITLE_FORMAT_PROMPT, DEFAULT_TITLE_FORMAT_PROMPT, null);
         }
-        return new AiTitleConfigResponse(record.getConfigValue(), DEFAULT_OUTPUT_CONSTRAINT, record.getUpdatedAt());
+        return new AiTitleConfigResponse(record.getConfigValue(), DEFAULT_TITLE_FORMAT_PROMPT, record.getUpdatedAt());
     }
 
-    public String outputConstraint() {
-        return config().outputConstraint();
+    public String titleFormatPrompt() {
+        return config().titleFormatPrompt();
     }
 
-    public AiTitleConfigResponse saveOutputConstraint(String outputConstraint) {
+    public AiTitleConfigResponse saveTitleFormatPrompt(String titleFormatPrompt) {
         ProviderConfigRecord record = new ProviderConfigRecord();
         record.setProviderId(PROVIDER_AI_TITLE);
-        record.setConfigKey(OUTPUT_CONSTRAINT_KEY);
-        record.setConfigValue(outputConstraint == null ? "" : outputConstraint.strip());
+        record.setConfigKey(TITLE_FORMAT_PROMPT_KEY);
+        record.setConfigValue(titleFormatPrompt == null ? "" : titleFormatPrompt.strip());
         record.setUpdatedAt(Instant.now(clock).toEpochMilli());
         providerConfigMapper.upsertConfig(record);
         return config();
     }
 
     public record AiTitleConfigResponse(
-            String outputConstraint,
-            String defaultOutputConstraint,
+            String titleFormatPrompt,
+            String defaultTitleFormatPrompt,
             Long updatedAt
     ) {
     }

@@ -106,7 +106,7 @@ https://preview.example.com
 https://preview.example.com/preview?url=https%3A%2F%2Fwww.v2ex.com%2Ft%2F1206093
 ```
 
-如果已经在后台配置了提示词 `style=fun`，可以追加 `style` 参数让文本卡片标题由 AI 基于帖子正文生成：
+如果已经在后台配置了 Style Prompt `style=fun`，可以追加 `style` 参数让文本卡片标题由 AI 基于帖子正文生成：
 
 ```text
 https://preview.example.com/preview?url=https%3A%2F%2Fwww.v2ex.com%2Ft%2F1206093&style=fun
@@ -279,7 +279,7 @@ LinkPeek/
 
 ### 配置项
 
-部署级配置通过环境变量提供；论坛登录态、提示词字典和 AI 服务配置通过 `/admin` 写入同一个 SQLite 数据库。
+部署级配置通过环境变量提供；论坛登录态、提示词设置和 AI 服务配置通过 `/admin` 写入同一个 SQLite 数据库。
 
 | 变量名 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -302,12 +302,13 @@ LinkPeek/
 
 访问 `/admin/login` 使用 `STATS_ADMIN_PASSWORD` 登录，登录后进入 `/admin`。后台会签发 HttpOnly Cookie，`GET /api/admin/session` 仅用于页面刷新时确认当前登录状态，不返回敏感配置。
 
-后台包含四个功能区：
+后台包含五个功能区：
 
-- 清理统计数据：调用 `POST /api/admin/stats/purge-all` 删除统计事件和链接聚合记录。
-- 提示词字典：维护 `style -> prompt`，`prompt` 可包含 `{raw_content}` 占位符；未包含时服务会把原文内容追加到提示词末尾。
-- Provider 配置：维护 LinuxDo Cookie key/value（`_t`、`cf_clearance`、`_forum_session`）和 NGA 登录态（`NGA_PASSPORT_UID`、`NGA_PASSPORT_CID`）。这些值是运行时唯一来源，不再读取对应论坛环境变量。
+- 提示词设置：维护 Title Format Prompt（作为 system 提示词）和 `style -> Style Prompt`。Raw Content 会始终作为独立 user 消息放在最后，Style Prompt 只填写风格要求。
 - AI 服务配置：支持多条 AI Provider，按启用状态和排序 fallback。`BaseURL` 填到 `/v1` 即可，例如 `https://api.openai.com/v1`，接口格式通过 Chat Completions / Responses 下拉框选择。API Key 按后台要求明文返回。
+- Provider 配置：维护 LinuxDo Cookie key/value（`_t`、`cf_clearance`、`_forum_session`）和 NGA 登录态（`NGA_PASSPORT_UID`、`NGA_PASSPORT_CID`）。这些值是运行时唯一来源，不再读取对应论坛环境变量。
+- 服务日志：查看应用滚动文件日志，支持行数、级别、关键词筛选和自动刷新。
+- 清理统计数据：调用 `POST /api/admin/stats/purge-all` 删除统计事件和链接聚合记录。
 
 ### 新增 provider
 
