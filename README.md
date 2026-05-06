@@ -1,5 +1,7 @@
 # LinkPeek
 
+[TOC]
+
 一个使用 Java 编写的链接预览代理服务，面向 iMessage 一类聊天分享场景，为受支持的第三方链接生成稳定的 Open Graph 预览页。
 
 采用 `Spring Boot 3.x + Maven` 多模块结构，对外统一暴露 `GET /preview?url=...` 入口，内部通过 provider SPI 解析目标链接，并重点提供可配置的 AI 标题生成能力。
@@ -351,3 +353,11 @@ curl -A "facebookexternalhit/1.1" \
 - 允许自由使用、修改、分发和商用
 - 只需保留原始版权声明和许可证文本
 - 适合个人项目、开源项目和商业内部项目使用
+
+## 友情链接
+
+<p align="center">
+  <a href="https://linux.do" target="_blank">
+    <img src="https://img.shields.io/badge/LINUX-DO-FFB003?style=for-the-badge&logo=linux&logoColor=white" alt="LINUX DO" />
+  </a>
+</p>
