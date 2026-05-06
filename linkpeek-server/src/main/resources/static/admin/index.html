@@ -226,7 +226,8 @@
         <form id="prompt-form" class="grid-form">
             <label>
                 <span>Style</span>
-                <input id="prompt-style" type="text" placeholder="fun" autocomplete="off" required>
+                <input id="prompt-style" type="text" placeholder="FUN" autocomplete="off" required>
+                <span class="field-hint">Style Key 保存时会统一转成大写；FREESTYLE 是系统保留模式，请不要作为 Style Key，请求 style=FREESTYLE 时会随机使用一个已配置 Style Prompt。</span>
             </label>
             <label class="wide">
                 <span>Style Prompt 风格</span>
@@ -291,6 +292,6 @@
     </section>
 </div>
 
-<script src="/admin/app.js?v=20260506-ai-downgrade-sentence"></script>
+<script src="/admin/app.js?v=20260506-style-uppercase"></script>
 </body>
 </html>

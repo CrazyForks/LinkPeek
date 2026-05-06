@@ -12,6 +12,7 @@ import io.github.shigella520.linkpeek.server.ai.AiApiKind;
 import io.github.shigella520.linkpeek.server.ai.AiProviderDowngradeService;
 import io.github.shigella520.linkpeek.server.ai.AiTitleClient;
 import io.github.shigella520.linkpeek.server.ai.AiTitlePrompt;
+import io.github.shigella520.linkpeek.server.ai.AiTitleService;
 import io.github.shigella520.linkpeek.server.stats.service.StatisticsMaintenanceService;
 import io.swagger.v3.oas.annotations.Hidden;
 import jakarta.servlet.http.HttpServletRequest;
@@ -146,7 +147,7 @@ public class AdminController {
             @RequestBody PromptRequest promptRequest
     ) {
         adminAuthService.requireAuthenticated(request);
-        String normalizedStyle = normalizeStyle(style);
+        String normalizedStyle = normalizeWritableStyle(style);
         if (promptRequest == null || !StringUtils.hasText(promptRequest.prompt())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Prompt must not be blank.");
         }
@@ -399,7 +400,15 @@ public class AdminController {
         if (!StringUtils.hasText(style) || !STYLE_PATTERN.matcher(style.strip()).matches()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Style must be 1-64 chars and only contain letters, numbers, dot, underscore, or dash.");
         }
-        return style.strip();
+        return AiTitleService.normalizeStyleKey(style);
+    }
+
+    private String normalizeWritableStyle(String style) {
+        String normalizedStyle = normalizeStyle(style);
+        if (AiTitleService.isFreestyleStyle(normalizedStyle)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Style key 'FREESTYLE' is reserved for freestyle mode.");
+        }
+        return normalizedStyle;
     }
 
     private String required(String value, String fieldName) {

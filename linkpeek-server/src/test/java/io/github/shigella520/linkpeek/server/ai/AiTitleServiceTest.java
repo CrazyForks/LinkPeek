@@ -78,7 +78,7 @@ class AiTitleServiceTest {
     @Test
     void resolveStylePromptIncludesTitleFormatPromptInPromptHash() {
         AdminPromptRecord promptRecord = new AdminPromptRecord();
-        promptRecord.setStyle("fun");
+        promptRecord.setStyle("FUN");
         promptRecord.setPrompt("UC 风格");
         AiTitleService defaultService = new AiTitleService(
                 new FakeAdminPromptMapper(promptRecord),
@@ -98,9 +98,29 @@ class AiTitleServiceTest {
         AiTitleService.StylePrompt defaultPrompt = defaultService.resolveStylePrompt("fun").orElseThrow();
         AiTitleService.StylePrompt customPrompt = customService.resolveStylePrompt("fun").orElseThrow();
 
+        assertEquals("FUN", defaultPrompt.style());
         assertEquals(AiTitleService.DEFAULT_TITLE_FORMAT_PROMPT, defaultPrompt.titleFormatPrompt());
         assertEquals("自定义输出要求", customPrompt.titleFormatPrompt());
         assertNotEquals(defaultPrompt.promptHash(), customPrompt.promptHash());
+    }
+
+    @Test
+    void resolveFreestylePromptSelectsConfiguredStylePrompt() {
+        AdminPromptRecord promptRecord = new AdminPromptRecord();
+        promptRecord.setStyle("FUN");
+        promptRecord.setPrompt("UC 风格");
+        AiTitleService service = new AiTitleService(
+                new FakeAdminPromptMapper(promptRecord),
+                new FakeAiProviderMapper(List.of()),
+                new FakeAiTitleClient(),
+                configService(null),
+                null
+        );
+
+        AiTitleService.StylePrompt freestylePrompt = service.resolveStylePrompt("freestyle").orElseThrow();
+
+        assertEquals("FUN", freestylePrompt.style());
+        assertEquals("UC 风格", freestylePrompt.prompt());
     }
 
     @Test
@@ -230,25 +250,32 @@ class AiTitleServiceTest {
     }
 
     private static final class FakeAdminPromptMapper implements AdminPromptMapper {
-        private final AdminPromptRecord prompt;
+        private final List<AdminPromptRecord> prompts;
 
         private FakeAdminPromptMapper(AdminPromptRecord prompt) {
-            this.prompt = prompt;
+            this(List.of(prompt));
+        }
+
+        private FakeAdminPromptMapper(List<AdminPromptRecord> prompts) {
+            this.prompts = prompts;
         }
 
         @Override
         public List<AdminPromptRecord> selectAllPrompts() {
-            return List.of(prompt);
+            return prompts;
         }
 
         @Override
         public List<String> selectStyles() {
-            return List.of(prompt.getStyle());
+            return prompts.stream().map(AdminPromptRecord::getStyle).toList();
         }
 
         @Override
         public AdminPromptRecord selectPrompt(String style) {
-            return prompt.getStyle().equals(style) ? prompt : null;
+            return prompts.stream()
+                    .filter(prompt -> prompt.getStyle().equals(style))
+                    .findFirst()
+                    .orElse(null);
         }
 
         @Override

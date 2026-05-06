@@ -22,12 +22,14 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.regex.Pattern;
 
 @Service
 public class AiTitleService {
     private static final Logger log = LoggerFactory.getLogger(AiTitleService.class);
 
+    public static final String FREESTYLE_STYLE = "FREESTYLE";
     public static final String DEFAULT_TITLE_FORMAT_PROMPT = AiTitleConfigService.DEFAULT_TITLE_FORMAT_PROMPT;
     private static final Pattern STYLE_PATTERN = Pattern.compile("^[A-Za-z0-9._-]{1,64}$");
     private static final int MAX_TITLE_CODE_POINTS = 120;
@@ -56,21 +58,54 @@ public class AiTitleService {
         if (!StringUtils.hasText(style)) {
             return Optional.empty();
         }
-        String normalizedStyle = style.strip();
-        if (!STYLE_PATTERN.matcher(normalizedStyle).matches()) {
+        String strippedStyle = style.strip();
+        if (!STYLE_PATTERN.matcher(strippedStyle).matches()) {
             return Optional.empty();
+        }
+        String normalizedStyle = normalizeStyleKey(strippedStyle);
+        if (isFreestyleStyle(normalizedStyle)) {
+            return resolveFreestylePrompt();
         }
         AdminPromptRecord prompt = adminPromptMapper.selectPrompt(normalizedStyle);
-        if (prompt == null || !StringUtils.hasText(prompt.getPrompt())) {
+        return stylePrompt(prompt);
+    }
+
+    private Optional<StylePrompt> resolveFreestylePrompt() {
+        List<AdminPromptRecord> prompts = adminPromptMapper.selectAllPrompts().stream()
+                .filter(prompt -> prompt != null
+                        && StringUtils.hasText(prompt.getStyle())
+                        && STYLE_PATTERN.matcher(prompt.getStyle().strip()).matches()
+                        && !isFreestyleStyle(prompt.getStyle())
+                        && StringUtils.hasText(prompt.getPrompt()))
+                .toList();
+        if (prompts.isEmpty()) {
             return Optional.empty();
         }
+        AdminPromptRecord prompt = prompts.get(ThreadLocalRandom.current().nextInt(prompts.size()));
+        return stylePrompt(prompt);
+    }
+
+    private Optional<StylePrompt> stylePrompt(AdminPromptRecord prompt) {
+        if (prompt == null || !StringUtils.hasText(prompt.getStyle()) || !StringUtils.hasText(prompt.getPrompt())) {
+            return Optional.empty();
+        }
+        String normalizedStyle = normalizeStyleKey(prompt.getStyle());
+        String promptText = prompt.getPrompt().strip();
         String titleFormatPrompt = titleFormatPrompt();
         return Optional.of(new StylePrompt(
                 normalizedStyle,
-                prompt.getPrompt().strip(),
+                promptText,
                 titleFormatPrompt,
-                sha256(prompt.getPrompt().strip() + "\n\n" + titleFormatPrompt)
+                sha256(promptText + "\n\n" + titleFormatPrompt)
         ));
+    }
+
+    public static boolean isFreestyleStyle(String style) {
+        return StringUtils.hasText(style) && FREESTYLE_STYLE.equals(normalizeStyleKey(style));
+    }
+
+    public static String normalizeStyleKey(String style) {
+        return style.strip().toUpperCase(Locale.ROOT);
     }
 
     public PreviewKey styledPreviewKey(URI canonicalUrl, StylePrompt stylePrompt) {

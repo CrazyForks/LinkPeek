@@ -337,7 +337,7 @@ class PreviewControllerTest {
         long now = System.currentTimeMillis();
         jdbcTemplate.update(
                 "INSERT INTO admin_prompt (style, prompt, updated_at) VALUES (?, ?, ?)",
-                "fun", "UC 风格", now
+                "FUN", "UC 风格", now
         );
         jdbcTemplate.update(
                 "INSERT INTO ai_provider (name, enabled, sort_order, base_url, model, effort, api_key, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -377,11 +377,38 @@ class PreviewControllerTest {
     }
 
     @Test
+    void previewFreestyleUsesRandomConfiguredStylePrompt() throws Exception {
+        testPreviewProvider.generatedTextCard.set(true);
+        testAiTitleClient.generatedTitle.set("\"AI freestyle 标题\"");
+        long now = System.currentTimeMillis();
+        jdbcTemplate.update(
+                "INSERT INTO admin_prompt (style, prompt, updated_at) VALUES (?, ?, ?)",
+                "FUN", "UC 风格", now
+        );
+        jdbcTemplate.update(
+                "INSERT INTO ai_provider (name, enabled, sort_order, base_url, model, effort, api_key, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "local", 1, 1, "https://api.openai.com/v1/chat/completions", "test-model", "low", "test-key", now
+        );
+
+        mockMvc.perform(get("/preview")
+                        .param("url", "https://video.example.com/watch/abc")
+                        .param("style", "freestyle")
+                        .header(HttpHeaders.USER_AGENT, "facebookexternalhit/1.1"))
+                .andExpect(status().isOk())
+                .andExpect(result -> org.junit.jupiter.api.Assertions.assertTrue(
+                        result.getResponse().getContentAsString(StandardCharsets.UTF_8).contains("AI freestyle 标题")
+                ));
+
+        org.junit.jupiter.api.Assertions.assertEquals(1, testAiTitleClient.requests.get());
+        org.junit.jupiter.api.Assertions.assertEquals("UC 风格", testAiTitleClient.prompt.get().stylePrompt());
+    }
+
+    @Test
     void previewStyleDoesNotUseAiForRealImageCards() throws Exception {
         long now = System.currentTimeMillis();
         jdbcTemplate.update(
                 "INSERT INTO admin_prompt (style, prompt, updated_at) VALUES (?, ?, ?)",
-                "fun", "UC 风格", now
+                "FUN", "UC 风格", now
         );
         jdbcTemplate.update(
                 "INSERT INTO ai_provider (name, enabled, sort_order, base_url, model, effort, api_key, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -488,20 +515,21 @@ class PreviewControllerTest {
         long now = System.currentTimeMillis();
         jdbcTemplate.update(
                 "INSERT INTO admin_prompt (style, prompt, updated_at) VALUES (?, ?, ?)",
-                "viral", "secret viral prompt", now
+                "VIRAL", "secret viral prompt", now
         );
         jdbcTemplate.update(
                 "INSERT INTO admin_prompt (style, prompt, updated_at) VALUES (?, ?, ?)",
-                "daily", "secret daily prompt", now
+                "DAILY", "secret daily prompt", now
         );
 
         mockMvc.perform(get("/api/preview/styles"))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
                 .andExpect(content().contentTypeCompatibleWith(org.springframework.http.MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.styles.length()").value(2))
-                .andExpect(jsonPath("$.styles[0]").value("daily"))
-                .andExpect(jsonPath("$.styles[1]").value("viral"))
+                .andExpect(jsonPath("$.styles.length()").value(3))
+                .andExpect(jsonPath("$.styles[0]").value("FREESTYLE"))
+                .andExpect(jsonPath("$.styles[1]").value("DAILY"))
+                .andExpect(jsonPath("$.styles[2]").value("VIRAL"))
                 .andExpect(content().string(not(containsString("secret"))));
     }
 
@@ -676,13 +704,30 @@ class PreviewControllerTest {
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                         .content("{\"prompt\":\"UC 风格\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.style").value("fun"))
+                .andExpect(jsonPath("$.style").value("FUN"))
                 .andExpect(jsonPath("$.prompt").value("UC 风格"));
 
         mockMvc.perform(get("/api/admin/prompts")
                         .cookie(cookie))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].style").value("fun"));
+                .andExpect(jsonPath("$[0].style").value("FUN"));
+
+        mockMvc.perform(put("/api/admin/prompts/freestyle")
+                        .cookie(cookie)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"prompt\":\"保留 key\"}"))
+                .andExpect(status().isBadRequest());
+
+        jdbcTemplate.update(
+                "INSERT INTO admin_prompt(style, prompt, updated_at) VALUES (?, ?, ?)",
+                "FREESTYLE",
+                "保留 key",
+                System.currentTimeMillis()
+        );
+        mockMvc.perform(delete("/api/admin/prompts/freestyle")
+                        .cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deleted").value(1));
 
         mockMvc.perform(get("/api/admin/ai-title-config")
                         .cookie(cookie))

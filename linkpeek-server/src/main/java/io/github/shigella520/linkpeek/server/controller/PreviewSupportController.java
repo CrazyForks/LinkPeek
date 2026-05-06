@@ -3,6 +3,7 @@ package io.github.shigella520.linkpeek.server.controller;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.github.shigella520.linkpeek.core.error.InvalidPreviewUrlException;
 import io.github.shigella520.linkpeek.server.admin.persistence.AdminPromptMapper;
+import io.github.shigella520.linkpeek.server.ai.AiTitleService;
 import io.github.shigella520.linkpeek.server.service.PreviewService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @RestController
@@ -63,7 +65,15 @@ public class PreviewSupportController {
             }
     )
     public ResponseEntity<StyleListResponse> styles() {
-        return response(HttpStatus.OK, new StyleListResponse(adminPromptMapper.selectStyles()));
+        List<String> configuredStyles = adminPromptMapper.selectStyles().stream()
+                .filter(style -> !AiTitleService.isFreestyleStyle(style))
+                .toList();
+        List<String> styles = new ArrayList<>();
+        if (!configuredStyles.isEmpty()) {
+            styles.add(AiTitleService.FREESTYLE_STYLE);
+        }
+        styles.addAll(configuredStyles);
+        return response(HttpStatus.OK, new StyleListResponse(styles));
     }
 
     private <T> ResponseEntity<T> response(HttpStatus status, T body) {

@@ -1,4 +1,6 @@
 (function () {
+    const FREESTYLE_STYLE = "FREESTYLE";
+
     const state = {
         prompts: [],
         aiProviders: [],
@@ -65,9 +67,15 @@
             event.preventDefault();
             const style = document.getElementById("prompt-style").value.trim();
             const prompt = document.getElementById("prompt-text").value.trim();
+            const normalizedStyle = style.toUpperCase();
+            if (normalizedStyle === FREESTYLE_STYLE) {
+                setFeedback("prompt-modal-feedback", "FREESTYLE 是系统保留模式，不能作为 Style Key。", "is-error");
+                document.getElementById("prompt-style").focus();
+                return;
+            }
             setFeedback("prompt-modal-feedback", "正在保存 Style Prompt...", "");
             try {
-                await fetchJson(`/api/admin/prompts/${encodeURIComponent(style)}`, {
+                await fetchJson(`/api/admin/prompts/${encodeURIComponent(normalizedStyle)}`, {
                     method: "PUT",
                     body: JSON.stringify({prompt})
                 });
