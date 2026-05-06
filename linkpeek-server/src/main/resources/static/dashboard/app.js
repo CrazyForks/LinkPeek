@@ -314,7 +314,7 @@
         animateValue("ai-requested-count", payload.funnel.aiRequestedCount);
         animateValue("ai-requested-count-inline", payload.funnel.aiRequestedCount);
         setText("ai-rendered-count", `已渲染 ${numberFormatter.format(payload.funnel.aiSucceededCount)}`);
-        setText("ai-render-ratio", formatRatio(payload.funnel.aiSuccessRate));
+        setText("ai-render-ratio", formatRatio(payload.funnel.aiRenderRate));
         setText("ai-render-rate-inline", formatRatio(payload.funnel.aiRenderRate));
         setText("ai-success-rate-inline", formatRatio(payload.funnel.aiSuccessRate));
 

@@ -28,7 +28,7 @@
 - 内置 `SQLite + MyBatis` 统计子系统，自动采集创建、打开、失败和缩略图命中事件。
 - 普通浏览器打开会立即跳转，并通过有界后台任务异步补齐统计标题。
 - 自带统计页，适合自部署后直接查看运营数据。
-- 提供 `/admin` 管理后台，可维护提示词、Provider 配置、AI 服务配置并清理统计数据。
+- 提供 `/admin` 管理后台，可维护提示词、Provider 配置、AI Provider 配置、服务日志和统计清理。
 - 文本卡片 provider 支持通过 `style` 参数触发 AI 标题生成，Bilibili 等真实图片卡片保持原图预览。
 - 使用多模块组织方式，便于后续扩展更多 provider。
 
@@ -64,6 +64,7 @@ docker build -t linkpeek .
 docker run --rm \
   -p 8080:8080 \
   -e BASE_URL=https://preview.example.com \
+  -e STATS_ADMIN_PASSWORD=change-me \
   -e WEB_ICON_PATH=/data/favicon.svg \
   -e CACHE_DIR=/data/cache \
   -e STATS_DB_PATH=/data/stats/linkpeek.db \
@@ -196,13 +197,14 @@ LinkPeek/
 ├── linkpeek-provider-nga/
 │   └── NGA 帖子 URL 识别、HTML 抓取、GBK 解码、标题卡片生成
 ├── linkpeek-provider-v2ex/
-│   └── V2EX 话题 URL 识别、canonical 化、元数据抓取、缩略图下载
+│   └── V2EX 话题 URL 识别、canonical 化、元数据抓取、标题卡片生成
 ├── linkpeek-provider-template/
 │   └── provider 开发模板
 ├── linkpeek-server/
 │   └── Spring Boot 服务、路由、缓存、HTML 渲染、管理后台、AI 标题生成
 ├── docs/
 │   ├── architecture.md
+│   ├── database-schema.md
 │   ├── linkpeek.sh
 │   └── provider-development.md
 ├── .github/workflows/ci.yml
@@ -219,7 +221,7 @@ LinkPeek/
 - `linkpeek-provider-bilibili`：封装 Bilibili 平台相关逻辑，不把平台细节泄漏到 Web 层。
 - `linkpeek-provider-linuxdo`：封装 LINUX DO 主题链接解析、HTML 元数据抓取和缩略图生成逻辑。
 - `linkpeek-provider-nga`：封装 NGA 帖子 URL 识别、页面抓取、首楼摘要提取和缩略图生成逻辑。
-- `linkpeek-provider-v2ex`：封装 V2EX 话题页解析、回复锚点归一化和缩略图下载逻辑。
+- `linkpeek-provider-v2ex`：封装 V2EX 话题页解析、回复锚点归一化、AI 标题上下文补齐和标题卡片生成逻辑。
 - `linkpeek-provider-template`：提供新增 provider 的最小骨架示例。
 - `linkpeek-server`：负责 HTTP 接口、爬虫识别、缓存、OG HTML 输出、SQLite 统计、Dashboard 页面、管理后台和 AI 标题生成。
 
@@ -279,10 +281,11 @@ LinkPeek/
 
 ### 配置项
 
-部署级配置通过环境变量提供；论坛登录态、提示词设置和 AI 服务配置通过 `/admin` 写入同一个 SQLite 数据库。
+部署级配置通过环境变量提供；论坛登录态、提示词设置和 AI Provider 配置通过 `/admin` 写入同一个 SQLite 数据库。
 
 | 变量名 | 默认值 | 说明 |
 | --- | --- | --- |
+| `PORT` | `8080` | HTTP 服务监听端口 |
 | `BASE_URL` | `http://localhost:8080` | 生成预览资源绝对地址时使用的服务基础地址 |
 | `WEB_ICON_PATH` | 空 | 可选的网页 favicon 文件路径，未配置或文件不存在时回退到内置 `DefaultIcon.svg` |
 | `CACHE_DIR` | `/data/cache` | 本地缓存根目录 |
@@ -297,6 +300,10 @@ LinkPeek/
 | `PREVIEW_WARMUP_THREADS` | `2` | 异步元数据预热线程数 |
 | `PREVIEW_WARMUP_QUEUE_CAPACITY` | `64` | 异步元数据预热队列上限，队列满时跳过本次预热 |
 | `LOG_LEVEL` | `INFO` | 日志级别 |
+| `LOG_FILE_PATH` | `/data/logs/linkpeek.log` | 服务滚动日志文件路径，也是后台日志查看功能的读取来源 |
+| `LOG_FILE_MAX_SIZE` | `10MB` | 单个滚动日志文件上限 |
+| `LOG_FILE_MAX_HISTORY` | `14` | 保留的滚动日志文件数量 |
+| `LOG_FILE_TOTAL_SIZE_CAP` | `200MB` | 滚动日志总大小上限 |
 
 ### 管理后台
 
@@ -305,7 +312,7 @@ LinkPeek/
 后台包含五个功能区：
 
 - 提示词设置：维护 Title Format Prompt（作为 system 提示词）和 `style -> Style Prompt`。Raw Content 会始终作为独立 user 消息放在最后，Style Prompt 只填写风格要求。
-- AI 服务配置：支持多条 AI Provider，按启用状态和排序 fallback。`BaseURL` 填到 `/v1` 即可，例如 `https://api.openai.com/v1`，接口格式通过 Chat Completions / Responses 下拉框选择。API Key 按后台要求明文返回。
+- AI 服务配置：支持多条 AI Provider，按启用状态和排序 fallback。每个 Provider 可配置请求超时，列表内支持拖拽排序、直接启用/禁用和连通性测试。全局自动降级可按连续超时次数把触发的 Provider 移动到列表最后；该开关和阈值是全局配置，不属于单个 Provider 字段。`BaseURL` 填到 `/v1` 即可，例如 `https://api.openai.com/v1`，接口格式通过 Chat Completions / Responses 下拉框选择。API Key 按后台要求明文返回。
 - Provider 配置：维护 LinuxDo Cookie key/value（`_t`、`cf_clearance`、`_forum_session`）和 NGA 登录态（`NGA_PASSPORT_UID`、`NGA_PASSPORT_CID`）。这些值是运行时唯一来源，不再读取对应论坛环境变量。
 - 服务日志：查看应用滚动文件日志，支持行数、级别、关键词筛选和自动刷新。
 - 清理统计数据：调用 `POST /api/admin/stats/purge-all` 删除统计事件和链接聚合记录。
@@ -324,6 +331,7 @@ LinkPeek/
 参考文档：
 
 - [架构说明](./docs/architecture.md)
+- [数据库表结构](./docs/database-schema.md)
 - [Provider 开发指南](./docs/provider-development.md)
 - [TemplatePreviewProvider](./linkpeek-provider-template/src/main/java/io/github/shigella520/linkpeek/provider/template/TemplatePreviewProvider.java)
 

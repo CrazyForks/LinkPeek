@@ -11,12 +11,15 @@
 - `canonicalize(URI sourceUrl)`
 - `resolve(URI sourceUrl)`
 
-可选的媒体方法：
+可选扩展方法：
 
+- `enrichForAiTitle(...)`
 - `downloadThumbnail(...)`
 - `downloadVideo(...)`
 
-如果不支持媒体能力，默认实现会抛出 `MediaNotSupportedException`。
+`enrichForAiTitle(...)` 默认原样返回元数据。文本卡片 provider 如果希望支持更高质量的 AI 标题，可以在这里基于原始 URL 补齐更完整的 `rawContent`，例如抓取帖子正文和回复内容；失败时应尽量返回原元数据，不影响基础预览。
+
+如果不支持媒体能力，`downloadThumbnail(...)` 和 `downloadVideo(...)` 的默认实现会抛出 `MediaNotSupportedException`。
 
 ## 实现规则
 
@@ -24,6 +27,9 @@
 - `supports(...)` 只能做 URL 形态判断，不应访问上游、不写缓存、不记录统计。
 - `canonicalize(...)` 应把同一平台的多种 URL 变体收敛成一个稳定 URL。
 - `resolve(...)` 应返回完整可用的 `PreviewMetadata`。
+- 文本卡片 provider 应设置 `generated://...` 形式的缩略图地址，并在 `downloadThumbnail(...)` 中渲染标题卡片。
+- 真实图片 provider 可以保留上游缩略图地址，由 `downloadThumbnail(...)` 下载并写入目标路径。
+- 如果 provider 支持 AI 标题，`PreviewMetadata.rawContent` 应包含适合总结的正文；`enrichForAiTitle(...)` 可作为额外的正文补齐步骤。
 - provider 模块不能依赖 `linkpeek-server`。
 
 ## 接入服务端
