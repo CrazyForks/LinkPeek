@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
 @Service
@@ -21,6 +22,7 @@ public class PreviewService {
     private final PreviewProviderRegistry providerRegistry;
     private final DiskCacheManager cacheManager;
     private final AiTitleService aiTitleService;
+    private final ConcurrentHashMap<String, ReentrantLock> metadataLocks = new ConcurrentHashMap<>();
 
     public PreviewService(
             PreviewProviderRegistry providerRegistry,
@@ -52,8 +54,26 @@ public class PreviewService {
     public PreviewLoadResult loadPreview(ResolvedPreview resolvedPreview, String style) {
         Optional<AiTitleService.StylePrompt> stylePrompt = aiTitleService.resolveStylePrompt(style);
         if (stylePrompt.isPresent()) {
-            PreviewKey styledPreviewKey = aiTitleService.styledPreviewKey(resolvedPreview.canonicalUrl(), stylePrompt.get());
-            Optional<PreviewMetadata> cachedStyled = cacheManager.getMetadata(styledPreviewKey);
+            return loadStyledPreview(resolvedPreview, stylePrompt.get());
+        }
+
+        return loadBasePreview(resolvedPreview);
+    }
+
+    private PreviewLoadResult loadStyledPreview(
+            ResolvedPreview resolvedPreview,
+            AiTitleService.StylePrompt stylePrompt
+    ) {
+        PreviewKey styledPreviewKey = aiTitleService.styledPreviewKey(resolvedPreview.canonicalUrl(), stylePrompt);
+        Optional<PreviewMetadata> cachedStyled = cacheManager.getMetadata(styledPreviewKey);
+        if (cachedStyled.isPresent()) {
+            return new PreviewLoadResult(resolvedPreview, cachedStyled.get(), styledPreviewKey, true, true, true);
+        }
+
+        ReentrantLock lock = metadataLockFor(styledPreviewKey);
+        lock.lock();
+        try {
+            cachedStyled = cacheManager.getMetadata(styledPreviewKey);
             if (cachedStyled.isPresent()) {
                 return new PreviewLoadResult(resolvedPreview, cachedStyled.get(), styledPreviewKey, true, true, true);
             }
@@ -63,15 +83,15 @@ public class PreviewService {
             if (!aiTitleService.supportsAiTitle(aiMetadata)) {
                 return baseResult;
             }
-            Optional<PreviewMetadata> styledMetadata = aiTitleService.generateStyledMetadata(aiMetadata, stylePrompt.get());
+            Optional<PreviewMetadata> styledMetadata = aiTitleService.generateStyledMetadata(aiMetadata, stylePrompt);
             if (styledMetadata.isPresent()) {
                 cacheManager.storeMetadata(styledPreviewKey, styledMetadata.get());
                 return new PreviewLoadResult(resolvedPreview, styledMetadata.get(), styledPreviewKey, false, true, true);
             }
             return baseResult.withAiStats(true, false);
+        } finally {
+            lock.unlock();
         }
-
-        return loadBasePreview(resolvedPreview);
     }
 
     private PreviewLoadResult loadBasePreview(ResolvedPreview resolvedPreview) {
@@ -80,9 +100,24 @@ public class PreviewService {
             return new PreviewLoadResult(resolvedPreview, cached.get(), true);
         }
 
-        PreviewMetadata metadata = resolvedPreview.provider().resolve(resolvedPreview.sourceUrl());
-        cacheManager.storeMetadata(resolvedPreview.previewKey(), metadata);
-        return new PreviewLoadResult(resolvedPreview, metadata, false);
+        ReentrantLock lock = metadataLockFor(resolvedPreview.previewKey());
+        lock.lock();
+        try {
+            cached = cacheManager.getMetadata(resolvedPreview.previewKey());
+            if (cached.isPresent()) {
+                return new PreviewLoadResult(resolvedPreview, cached.get(), true);
+            }
+
+            PreviewMetadata metadata = resolvedPreview.provider().resolve(resolvedPreview.sourceUrl());
+            cacheManager.storeMetadata(resolvedPreview.previewKey(), metadata);
+            return new PreviewLoadResult(resolvedPreview, metadata, false);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private ReentrantLock metadataLockFor(PreviewKey previewKey) {
+        return metadataLocks.computeIfAbsent(previewKey.value(), ignored -> new ReentrantLock());
     }
 
     public Optional<PreviewLoadResult> getCachedPreview(ResolvedPreview resolvedPreview) {
