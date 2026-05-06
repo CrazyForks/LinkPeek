@@ -10,7 +10,7 @@
 
 [Raycast Script](docs/linkpeek.sh)
 
-[快捷指令 Shortcut](https://www.icloud.com/shortcuts/178990c09c624dd3b45e88eec90e8a9a)
+[快捷指令 Shortcut](https://www.icloud.com/shortcuts/5cce870e64ff48e0853bd77485191fa7)
 
 ## 功能特点
 
