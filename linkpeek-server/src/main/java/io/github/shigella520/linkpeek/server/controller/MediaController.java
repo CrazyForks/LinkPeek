@@ -1,5 +1,7 @@
 package io.github.shigella520.linkpeek.server.controller;
 
+import io.github.shigella520.linkpeek.core.error.MetadataNotFoundException;
+import io.github.shigella520.linkpeek.core.error.PreviewException;
 import io.github.shigella520.linkpeek.server.service.PreviewService;
 import io.github.shigella520.linkpeek.server.stats.service.StatisticsRecorder;
 import io.swagger.v3.oas.annotations.Operation;
@@ -8,6 +10,8 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -25,6 +29,8 @@ import java.nio.file.Path;
 @RequestMapping("/media")
 @Tag(name = "Media", description = "缩略图与视频代理接口")
 public class MediaController {
+    private static final Logger log = LoggerFactory.getLogger(MediaController.class);
+
     private final PreviewService previewService;
     private final StatisticsRecorder statisticsRecorder;
 
@@ -47,19 +53,52 @@ public class MediaController {
             @PathVariable String previewKey
     ) {
         long startedAt = System.nanoTime();
-        PreviewService.ThumbnailResult result = previewService.ensureThumbnailResult(previewKey);
-        statisticsRecorder.recordThumbnailServed(
-                previewKey,
-                result.metadata(),
-                result.cacheHit(),
-                elapsedMillis(startedAt)
-        );
-        Path path = result.path();
-        FileSystemResource resource = new FileSystemResource(path);
-        return ResponseEntity.ok()
-                .contentType(MediaType.IMAGE_JPEG)
-                .header(HttpHeaders.CACHE_CONTROL, "public, max-age=3600")
-                .body(resource);
+        try {
+            PreviewService.ThumbnailResult result = previewService.ensureThumbnailResult(previewKey);
+            long durationMs = elapsedMillis(startedAt);
+            statisticsRecorder.recordThumbnailServed(
+                    previewKey,
+                    result.metadata(),
+                    result.cacheHit(),
+                    durationMs
+            );
+            Path path = result.path();
+            log.info(
+                    "thumbnail_served previewKey={} provider={} cacheHit={} durationMs={} status={}",
+                    previewKey,
+                    result.metadata() == null ? "n/a" : result.metadata().providerId(),
+                    result.cacheHit(),
+                    durationMs,
+                    200
+            );
+            FileSystemResource resource = new FileSystemResource(path);
+            return ResponseEntity.ok()
+                    .contentType(MediaType.IMAGE_JPEG)
+                    .header(HttpHeaders.CACHE_CONTROL, "public, max-age=3600")
+                    .body(resource);
+        } catch (RuntimeException exception) {
+            long durationMs = elapsedMillis(startedAt);
+            HttpStatus failureStatus = thumbnailFailureStatus(exception);
+            if (failureStatus.is5xxServerError()) {
+                log.warn(
+                        "thumbnail_failed previewKey={} durationMs={} status={} message={}",
+                        previewKey,
+                        durationMs,
+                        failureStatus.value(),
+                        exception.getMessage(),
+                        exception
+                );
+            } else {
+                log.info(
+                        "thumbnail_failed previewKey={} durationMs={} status={} message={}",
+                        previewKey,
+                        durationMs,
+                        failureStatus.value(),
+                        exception.getMessage()
+                );
+            }
+            throw exception;
+        }
     }
 
     @GetMapping("/video/{previewKey}.mp4")
@@ -81,5 +120,21 @@ public class MediaController {
 
     private long elapsedMillis(long startedAt) {
         return (System.nanoTime() - startedAt) / 1_000_000;
+    }
+
+    private HttpStatus thumbnailFailureStatus(RuntimeException exception) {
+        if (exception instanceof MetadataNotFoundException) {
+            return HttpStatus.NOT_FOUND;
+        }
+        if (exception instanceof IllegalArgumentException) {
+            return HttpStatus.BAD_REQUEST;
+        }
+        if (exception instanceof PreviewException) {
+            return HttpStatus.BAD_GATEWAY;
+        }
+        if (exception instanceof IllegalStateException) {
+            return HttpStatus.BAD_GATEWAY;
+        }
+        return HttpStatus.INTERNAL_SERVER_ERROR;
     }
 }

@@ -10,6 +10,13 @@ management:
 logging:
   level:
     root: ${LOG_LEVEL:INFO}
+  file:
+    name: ${LOG_FILE_PATH:/data/logs/linkpeek.log}
+  logback:
+    rollingpolicy:
+      max-file-size: ${LOG_FILE_MAX_SIZE:10MB}
+      max-history: ${LOG_FILE_MAX_HISTORY:14}
+      total-size-cap: ${LOG_FILE_TOTAL_SIZE_CAP:200MB}
 
 springdoc:
   packages-to-scan: io.github.shigella520.linkpeek.server.controller
@@ -37,15 +44,13 @@ linkpeek:
   cache-max-size-gb: ${CACHE_MAX_SIZE_GB:10}
   stats-retention-days: ${STATS_RETENTION_DAYS:180}
   stats-admin-password: ${STATS_ADMIN_PASSWORD:}
+  service-log-path: ${LOG_FILE_PATH:/data/logs/linkpeek.log}
   download-timeout: ${DOWNLOAD_TIMEOUT:120s}
   log-level: ${LOG_LEVEL:INFO}
   video-max-quality: ${VIDEO_MAX_QUALITY:480}
   preview-warmup-enabled: ${PREVIEW_WARMUP_ENABLED:true}
   preview-warmup-threads: ${PREVIEW_WARMUP_THREADS:2}
   preview-warmup-queue-capacity: ${PREVIEW_WARMUP_QUEUE_CAPACITY:64}
-  nga-passport-uid: ${NGA_PASSPORT_UID:}
-  nga-passport-cid: ${NGA_PASSPORT_CID:}
-  linux-do-cookie: ${LINUXDO_COOKIE:}
   crawler-signatures:
     - facebookexternalhit
     - Facebot

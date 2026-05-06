@@ -8,6 +8,7 @@ import io.github.shigella520.linkpeek.core.media.TitleCardRenderer;
 import io.github.shigella520.linkpeek.core.model.ContentType;
 import io.github.shigella520.linkpeek.core.model.PreviewMetadata;
 import io.github.shigella520.linkpeek.core.provider.PreviewProvider;
+import io.github.shigella520.linkpeek.core.util.PreviewRawContentFormatter;
 import io.github.shigella520.linkpeek.core.util.UrlNormalizer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,12 +34,18 @@ public class V2exPreviewProvider implements PreviewProvider {
     private static final Logger log = LoggerFactory.getLogger(V2exPreviewProvider.class);
 
     private static final Pattern TOPIC_PATH_PATTERN = Pattern.compile("^/(?:amp/)?t/(\\d+)(?:/.*)?$");
+    private static final Pattern TOPIC_CONTENT_PATTERN = Pattern.compile("(?is)<div\\b[^>]*class=[\"'][^\"']*\\btopic_content\\b[^\"']*[\"'][^>]*>(.*?)</div>");
+    private static final Pattern REPLY_CONTENT_PATTERN = Pattern.compile("(?is)<div\\b[^>]*class=[\"'][^\"']*\\breply_content\\b[^\"']*[\"'][^>]*>(.*?)</div>");
+    private static final Pattern SCRIPT_STYLE_PATTERN = Pattern.compile("(?is)<(script|style)\\b[^>]*>.*?</\\1>");
+    private static final Pattern TAG_PATTERN = Pattern.compile("(?is)<[^>]+>");
+    private static final Pattern NUMERIC_ENTITY_PATTERN = Pattern.compile("&#(x?[0-9A-Fa-f]+);");
     private static final String SITE_NAME = "V2EX";
     private static final String REFERER = "https://www.v2ex.com";
     private static final String TITLE_CARD_PREFIX = "generated://v2ex/title-card/";
     private static final int CARD_WIDTH = TitleCardRenderer.WIDTH;
     private static final int CARD_HEIGHT = TitleCardRenderer.HEIGHT;
     private static final int MAX_DESCRIPTION_LENGTH = 280;
+    private static final int MAX_RAW_CONTENT_LENGTH = 12_000;
     private static final String ELLIPSIS = "…";
 
     private final HttpClient httpClient;
@@ -121,6 +128,8 @@ public class V2exPreviewProvider implements PreviewProvider {
             JsonNode node = topic.path("node");
             JsonNode member = topic.path("member");
             String topicTitle = clean(topic.path("title").asText(""));
+            String topicContent = summarize(topic.path("content").asText(""), MAX_RAW_CONTENT_LENGTH);
+            String rawContent = buildRawContent(topicTitle, topicContent, List.of());
 
             return new PreviewMetadata(
                     normalizedSourceUrl.toString(),
@@ -130,13 +139,14 @@ public class V2exPreviewProvider implements PreviewProvider {
                     buildDescription(
                             clean(node.path("title").asText("")),
                             clean(member.path("username").asText("")),
-                            clean(topic.path("content").asText(""))
+                            topicContent
                     ),
                     SITE_NAME,
                     buildGeneratedThumbnailUrl(topicId),
                     CARD_WIDTH,
                     CARD_HEIGHT,
-                    ContentType.ARTICLE
+                    ContentType.ARTICLE,
+                    rawContent
             );
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
@@ -150,6 +160,33 @@ public class V2exPreviewProvider implements PreviewProvider {
             );
             throw translateIOException(exception, "Failed to read or parse the V2EX API response.");
         }
+    }
+
+    @Override
+    public PreviewMetadata enrichForAiTitle(PreviewMetadata metadata, URI sourceUrl) {
+        if (metadata == null) {
+            return null;
+        }
+        URI normalizedSourceUrl;
+        try {
+            normalizedSourceUrl = UrlNormalizer.normalizeHttpUrl(sourceUrl);
+        } catch (RuntimeException exception) {
+            normalizedSourceUrl = URI.create(metadata.canonicalUrl());
+        }
+        Optional<String> topicId = extractTopicId(normalizedSourceUrl)
+                .or(() -> extractTopicId(URI.create(metadata.canonicalUrl())));
+        if (topicId.isEmpty()) {
+            return metadata;
+        }
+        Optional<String> rawContent = fetchTopicPageRawContent(
+                normalizedSourceUrl,
+                topicId.get(),
+                metadata.title(),
+                fallbackTopicContent(metadata.rawContent())
+        );
+        return rawContent
+                .map(value -> withRawContent(metadata, value))
+                .orElse(metadata);
     }
 
     @Override
@@ -200,6 +237,97 @@ public class V2exPreviewProvider implements PreviewProvider {
         return Optional.ofNullable(payload.get(0));
     }
 
+    private Optional<String> fetchTopicPageRawContent(
+            URI sourceUrl,
+            String topicId,
+            String topicTitle,
+            String fallbackTopicContent
+    ) {
+        URI pageUri = topicPageUri(sourceUrl, topicId);
+        HttpRequest request = HttpRequest.newBuilder(pageUri)
+                .timeout(requestTimeout)
+                .header("Referer", REFERER)
+                .header("User-Agent", userAgent)
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+                .GET()
+                .build();
+
+        try {
+            HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            if (response.statusCode() >= 400) {
+                log.debug("v2ex_topic_page_raw_content_http_error requestUri={} status={}", pageUri, response.statusCode());
+                return Optional.empty();
+            }
+
+            String html = new String(response.body(), StandardCharsets.UTF_8);
+            String topicContent = firstTopicContent(html).filter(value -> !value.isBlank()).orElse(fallbackTopicContent);
+            String rawContent = buildRawContent(topicTitle, topicContent, replyContents(html));
+            return rawContent.isBlank() ? Optional.empty() : Optional.of(rawContent);
+        } catch (IOException exception) {
+            log.debug("v2ex_topic_page_raw_content_failed requestUri={} timeoutMs={}", pageUri, requestTimeout.toMillis(), exception);
+            return Optional.empty();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            log.debug("v2ex_topic_page_raw_content_interrupted requestUri={}", pageUri, exception);
+            return Optional.empty();
+        }
+    }
+
+    private URI topicPageUri(URI sourceUrl, String topicId) {
+        String query = sourceUrl.getRawQuery();
+        String path = "/t/" + topicId + (query == null || query.isBlank() ? "" : "?" + query);
+        return apiBaseUri.resolve(path);
+    }
+
+    private Optional<String> firstTopicContent(String html) {
+        Matcher matcher = TOPIC_CONTENT_PATTERN.matcher(html);
+        if (matcher.find()) {
+            return Optional.of(cleanHtmlText(matcher.group(1)));
+        }
+        return Optional.empty();
+    }
+
+    private List<String> replyContents(String html) {
+        List<String> replies = new ArrayList<>();
+        Matcher matcher = REPLY_CONTENT_PATTERN.matcher(html);
+        while (matcher.find()) {
+            String reply = cleanHtmlText(matcher.group(1));
+            if (!reply.isBlank()) {
+                replies.add(reply);
+            }
+        }
+        return replies;
+    }
+
+    private String buildRawContent(String topicTitle, String topicContent, List<String> replies) {
+        return PreviewRawContentFormatter.format(topicTitle, topicContent, replies, MAX_RAW_CONTENT_LENGTH);
+    }
+
+    private PreviewMetadata withRawContent(PreviewMetadata metadata, String rawContent) {
+        return new PreviewMetadata(
+                metadata.sourceUrl(),
+                metadata.canonicalUrl(),
+                metadata.providerId(),
+                metadata.title(),
+                metadata.description(),
+                metadata.siteName(),
+                metadata.thumbnailUrl(),
+                metadata.imageWidth(),
+                metadata.imageHeight(),
+                metadata.contentType(),
+                rawContent
+        );
+    }
+
+    private String fallbackTopicContent(String rawContent) {
+        String marker = "\n\n正文\n";
+        if (rawContent != null && rawContent.startsWith("原标题\n") && rawContent.contains(marker)) {
+            return rawContent.substring(rawContent.indexOf(marker) + marker.length()).strip();
+        }
+        return rawContent == null ? "" : rawContent.strip();
+    }
+
     private String buildGeneratedThumbnailUrl(String topicId) {
         return TITLE_CARD_PREFIX + topicId;
     }
@@ -225,11 +353,15 @@ public class V2exPreviewProvider implements PreviewProvider {
     }
 
     private String summarize(String value) {
+        return summarize(value, MAX_DESCRIPTION_LENGTH);
+    }
+
+    private String summarize(String value, int maxLength) {
         String compact = clean(value);
-        if (compact.length() <= MAX_DESCRIPTION_LENGTH) {
+        if (compact.length() <= maxLength) {
             return compact;
         }
-        return compact.substring(0, MAX_DESCRIPTION_LENGTH - 1).stripTrailing() + ELLIPSIS;
+        return compact.substring(0, maxLength - 1).stripTrailing() + ELLIPSIS;
     }
 
     private String clean(String value) {
@@ -240,6 +372,54 @@ public class V2exPreviewProvider implements PreviewProvider {
                 .replace('\n', ' ')
                 .replaceAll("\\s+", " ")
                 .strip();
+    }
+
+    private String cleanHtmlText(String value) {
+        if (value == null) {
+            return "";
+        }
+        String withoutScripts = SCRIPT_STYLE_PATTERN.matcher(value).replaceAll(" ");
+        String withBreaks = withoutScripts
+                .replaceAll("(?i)<br\\s*/?>", "\n")
+                .replaceAll("(?i)</p>", "\n")
+                .replaceAll("(?i)</li>", "\n");
+        return clean(decodeHtmlEntities(TAG_PATTERN.matcher(withBreaks).replaceAll(" ")));
+    }
+
+    private String decodeHtmlEntities(String value) {
+        String decoded = value.replace("&nbsp;", " ")
+                .replace("&amp;", "&")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"")
+                .replace("&apos;", "'")
+                .replace("&#39;", "'")
+                .replace("&ldquo;", "“")
+                .replace("&rdquo;", "”")
+                .replace("&lsquo;", "‘")
+                .replace("&rsquo;", "’")
+                .replace("&hellip;", "…")
+                .replace("&mdash;", "—")
+                .replace("&ndash;", "–");
+
+        Matcher matcher = NUMERIC_ENTITY_PATTERN.matcher(decoded);
+        StringBuffer output = new StringBuffer();
+        while (matcher.find()) {
+            matcher.appendReplacement(output, Matcher.quoteReplacement(decodeNumericEntity(matcher.group(1), matcher.group(0))));
+        }
+        matcher.appendTail(output);
+        return output.toString();
+    }
+
+    private String decodeNumericEntity(String value, String fallback) {
+        try {
+            int radix = value.startsWith("x") || value.startsWith("X") ? 16 : 10;
+            String digits = radix == 16 ? value.substring(1) : value;
+            int codePoint = Integer.parseInt(digits, radix);
+            return new String(Character.toChars(codePoint));
+        } catch (IllegalArgumentException exception) {
+            return fallback;
+        }
     }
 
     private UpstreamFetchException translateIOException(IOException exception, String fallbackMessage) {

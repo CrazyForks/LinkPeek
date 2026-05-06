@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LinkPeek Admin</title>
+    <link rel="icon" href="/favicon.ico">
+    <link rel="stylesheet" href="/admin/styles.css?v=20260506-ai-downgrade-sentence">
+</head>
+<body>
+<header class="topbar">
+    <div>
+        <p class="eyebrow">Management</p>
+        <h1>LinkPeek Admin</h1>
+    </div>
+    <nav class="topbar-actions">
+        <a href="/dashboard">Dashboard</a>
+        <button type="button" id="logout-button" hidden>退出</button>
+    </nav>
+</header>
+
+<main>
+    <section id="admin-shell" class="admin-shell" hidden>
+        <div class="workspace">
+            <section class="panel" id="prompts">
+                <div class="panel-head">
+                    <div>
+                        <p class="panel-kicker">Prompts</p>
+                        <h2>提示词设置</h2>
+                    </div>
+                </div>
+                <div class="prompt-subsection prompt-subsection-first">
+                    <div class="subsection-head">
+                        <div>
+                            <p class="panel-kicker">Title Format Prompt</p>
+                            <h3>标题格式</h3>
+                        </div>
+                    </div>
+                    <form id="ai-title-config-form" class="config-form">
+                        <label>
+                            <textarea id="ai-title-format-prompt" rows="4" placeholder="你将收到两段输入：第一段是标题风格要求，第二段是待总结原文。请严格依据标题风格要求，总结待总结原文。以此为标准，生成一段大于15中文字符，小于30个中文字符，客观，辩证的标题。输出格式要求：只返回一行中文标题文本，不要解释、不要JSON、不要Markdown、不要引号、不要换行。"></textarea>
+                            <span class="field-hint">作为 system 提示词发送。Style Prompt 和 Raw Content 会通过独立 user 消息发送，Raw Content 永远在最后。</span>
+                        </label>
+                        <div class="form-actions">
+                            <button type="button" class="secondary" id="ai-title-format-default-button">使用默认标题格式</button>
+                            <button type="submit">保存标题格式</button>
+                        </div>
+                        <p id="ai-title-config-feedback" class="feedback" role="status" aria-live="polite"></p>
+                    </form>
+                </div>
+                <div class="prompt-subsection">
+                    <div class="subsection-head subsection-head-actions">
+                        <div>
+                            <p class="panel-kicker">Style Prompt</p>
+                            <h3>风格</h3>
+                        </div>
+                        <button type="button" id="prompt-new-button">新建 Style Prompt</button>
+                    </div>
+                    <p id="prompt-feedback" class="feedback" role="status" aria-live="polite"></p>
+                    <div class="table-shell">
+                        <table>
+                            <thead>
+                            <tr>
+                                <th>Style</th>
+                                <th>Style Prompt</th>
+                                <th>操作</th>
+                            </tr>
+                            </thead>
+                            <tbody id="prompt-table"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel" id="ai-providers">
+                <div class="panel-head">
+                    <div>
+                        <p class="panel-kicker">AI</p>
+                        <h2>AI 服务配置</h2>
+                    </div>
+                    <button type="button" id="ai-new-button">新建 AI Provider</button>
+                </div>
+                <p id="ai-feedback" class="feedback" role="status" aria-live="polite"></p>
+                <form id="ai-downgrade-config-form" class="ai-downgrade-config-form">
+                    <p class="ai-downgrade-sentence">
+                        <button
+                            id="ai-auto-downgrade-enabled-toggle"
+                            class="inline-state-toggle"
+                            type="button"
+                            aria-pressed="false"
+                            data-enabled="false"
+                        ><strong id="ai-auto-downgrade-enabled-label">禁用</strong></button>
+                        <span>Provider 超时达到</span>
+                        <label class="inline-threshold-field">
+                            <span class="sr-only">自动降级超时次数</span>
+                            <input id="ai-auto-downgrade-timeout-threshold" class="inline-threshold-input" type="number" min="1" max="100" value="3" required>
+                        </label>
+                        <span>次后自动移动到列表最后。</span>
+                    </p>
+                </form>
+                <p id="ai-downgrade-config-feedback" class="feedback" role="status" aria-live="polite"></p>
+                <div class="table-shell">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th class="drag-column"></th>
+                            <th>Name</th>
+                            <th>BaseURL</th>
+                            <th>Format</th>
+                            <th>Model</th>
+                            <th>Timeout</th>
+                            <th>Enabled</th>
+                            <th>操作</th>
+                        </tr>
+                        </thead>
+                        <tbody id="ai-table"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="panel" id="provider-config">
+                <div class="panel-head">
+                    <div>
+                        <p class="panel-kicker">Providers</p>
+                        <h2>Provider 配置</h2>
+                    </div>
+                </div>
+                <form id="provider-form" class="provider-grid">
+                    <fieldset>
+                        <legend>LinuxDo Cookie</legend>
+                        <label>
+                            <span>_t</span>
+                            <input data-provider="linuxdo" data-key="_t" type="text" autocomplete="off">
+                        </label>
+                        <label>
+                            <span>cf_clearance</span>
+                            <input data-provider="linuxdo" data-key="cf_clearance" type="text" autocomplete="off">
+                        </label>
+                        <label>
+                            <span>_forum_session</span>
+                            <input data-provider="linuxdo" data-key="_forum_session" type="text" autocomplete="off">
+                        </label>
+                    </fieldset>
+                    <fieldset>
+                        <legend>NGA Cookie</legend>
+                        <label>
+                            <span>NGA_PASSPORT_UID</span>
+                            <input data-provider="nga" data-key="NGA_PASSPORT_UID" type="text" autocomplete="off">
+                        </label>
+                        <label>
+                            <span>NGA_PASSPORT_CID</span>
+                            <input data-provider="nga" data-key="NGA_PASSPORT_CID" type="text" autocomplete="off">
+                        </label>
+                    </fieldset>
+                    <button type="submit">保存 Provider 配置</button>
+                </form>
+                <p id="provider-feedback" class="feedback" role="status" aria-live="polite"></p>
+            </section>
+
+            <section class="panel" id="service-logs">
+                <div class="panel-head">
+                    <div>
+                        <p class="panel-kicker">Logs</p>
+                        <h2>服务日志</h2>
+                    </div>
+                    <button type="submit" form="log-form">刷新日志</button>
+                </div>
+                <form id="log-form" class="log-controls">
+                    <label>
+                        <span>行数</span>
+                        <select id="log-lines">
+                            <option value="100">100</option>
+                            <option value="300" selected>300</option>
+                            <option value="500">500</option>
+                            <option value="1000">1000</option>
+                            <option value="2000">2000</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>级别</span>
+                        <select id="log-level">
+                            <option value="">全部</option>
+                            <option value="ERROR">ERROR</option>
+                            <option value="WARN">WARN</option>
+                            <option value="INFO">INFO</option>
+                            <option value="DEBUG">DEBUG</option>
+                            <option value="TRACE">TRACE</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>关键词</span>
+                        <input id="log-query" type="search" placeholder="requestId / previewKey / error" autocomplete="off">
+                    </label>
+                    <label class="checkbox-row log-auto-refresh">
+                        <input id="log-auto-refresh" type="checkbox">
+                        <span>自动刷新</span>
+                    </label>
+                </form>
+                <p id="log-feedback" class="feedback" role="status" aria-live="polite"></p>
+                <p id="log-meta" class="log-meta"></p>
+                <pre id="log-output" class="log-output" aria-label="服务日志"></pre>
+            </section>
+
+            <section class="panel" id="purge">
+                <div class="panel-head">
+                    <div>
+                        <p class="panel-kicker">Stats</p>
+                        <h2>清理统计数据</h2>
+                    </div>
+                    <button type="button" class="danger" id="purge-button">清理全部统计数据</button>
+                </div>
+                <p class="description">删除全部统计事件和链接聚合记录，执行后无法恢复。</p>
+                <p id="purge-feedback" class="feedback" role="status" aria-live="polite"></p>
+            </section>
+        </div>
+    </section>
+</main>
+
+<div class="modal-shell" id="prompt-modal" hidden>
+    <div class="modal-backdrop" data-close-modal="prompt"></div>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="prompt-modal-title">
+        <div class="modal-head">
+            <h3 id="prompt-modal-title">新建 Style Prompt</h3>
+            <button type="button" class="secondary" id="prompt-cancel-button">取消</button>
+        </div>
+        <form id="prompt-form" class="grid-form">
+            <label class="wide">
+                <span>Style</span>
+                <input id="prompt-style" type="text" placeholder="FUN" autocomplete="off" required>
+                <span class="field-hint">Style Key 保存时会统一转成大写；FREESTYLE 是系统保留模式，请不要作为 Style Key。</span>
+            </label>
+            <label class="wide">
+                <span>Style Prompt 风格</span>
+                <textarea id="prompt-text" rows="7" placeholder="以下是 UC 震惊部风格的标题要求：开头可使用震惊、重磅、刚刚等强情绪词，但标题仍需保留原文核心信息。" required></textarea>
+                <span class="field-hint">只填写风格要求。原文会作为 Raw Content 独立 user 消息发送，并且永远排在最后。</span>
+            </label>
+            <div class="modal-actions wide">
+                <button type="submit">保存 Style Prompt</button>
+            </div>
+        </form>
+        <p id="prompt-modal-feedback" class="feedback" role="status" aria-live="polite"></p>
+    </section>
+</div>
+
+<div class="modal-shell" id="ai-modal" hidden>
+    <div class="modal-backdrop" data-close-modal="ai"></div>
+    <section class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="ai-modal-title">
+        <div class="modal-head">
+            <h3 id="ai-modal-title">新建 AI Provider</h3>
+            <button type="button" class="secondary" id="ai-cancel-button">取消</button>
+        </div>
+        <form id="ai-form" class="grid-form">
+            <input id="ai-id" type="hidden">
+            <label>
+                <span>Name</span>
+                <input id="ai-name" type="text" placeholder="OpenAI" autocomplete="off" required>
+            </label>
+            <label>
+                <span>Timeout</span>
+                <input id="ai-request-timeout-seconds" type="number" min="1" max="600" value="45" required>
+                <span class="field-hint">AI 请求等待秒数，范围 1-600。</span>
+            </label>
+            <label class="wide">
+                <span>BaseURL</span>
+                <input id="ai-base-url" type="url" placeholder="https://api.openai.com/v1" autocomplete="off" required>
+                <span class="field-hint">只填写到 /v1，例如 OpenAI: https://api.openai.com/v1。接口格式在下方选择。</span>
+            </label>
+            <label>
+                <span>Format</span>
+                <select id="ai-api-kind" required>
+                    <option value="CHAT_COMPLETIONS">Chat Completions</option>
+                    <option value="RESPONSES">Responses</option>
+                </select>
+            </label>
+            <label>
+                <span>Model</span>
+                <input id="ai-model" type="text" placeholder="gpt-5-mini" autocomplete="off" required>
+            </label>
+            <label>
+                <span>Effort</span>
+                <input id="ai-effort" type="text" placeholder="low" autocomplete="off">
+            </label>
+            <label class="wide">
+                <span>APIKey</span>
+                <input id="ai-api-key" type="password" autocomplete="off">
+            </label>
+            <div class="modal-actions">
+                <button type="submit">保存 AI Provider</button>
+            </div>
+        </form>
+        <p id="ai-modal-feedback" class="feedback" role="status" aria-live="polite"></p>
+    </section>
+</div>
+
+<script src="/admin/app.js?v=20260506-style-uppercase"></script>
+</body>
+</html>

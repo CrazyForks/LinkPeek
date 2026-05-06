@@ -84,23 +84,38 @@ class NgaPreviewProviderTest {
                     <div id="m_posts_c">
                         <table>
                             <tr><td class="posterinfo"><a href="/nuke.php?uid=123">测试用户</a></td></tr>
-                            <tr><td class="postcontent ubbcode">
-                                第一段内容<br>
-                                第二段内容，顺便带一点 HTML &amp; 实体。
-                            </td></tr>
-                        </table>
-                    </div>
-                </body>
-                </html>
+	                            <tr><td class="postcontent ubbcode">
+	                                第一段内容<br>
+	                                第二段内容，顺便带一点 HTML &amp; 实体。
+	                            </td></tr>
+	                        </table>
+	                        <table>
+	                            <tr><td class="posterinfo"><a href="/nuke.php?uid=456">回复用户</a></td></tr>
+	                            <tr><td class="postcontent ubbcode">
+	                                回复观点，补充背景。
+	                            </td></tr>
+	                        </table>
+	                    </div>
+	                </body>
+	                </html>
                 """.getBytes(Charset.forName("GB18030"));
 
         PreviewMetadata metadata = provider.resolve(URI.create("https://bbs.nga.cn/read.php?tid=46581611&page=3"));
 
         assertEquals("nga", metadata.providerId());
-        assertEquals("https://bbs.nga.cn/read.php?tid=46581611", metadata.canonicalUrl());
-        assertEquals("[水区] 这是一个测试贴", metadata.title());
-        assertEquals("NGA", metadata.description());
-        assertTrue(metadata.thumbnailUrl().startsWith("generated://nga/thread-card/46581611"));
+	        assertEquals("https://bbs.nga.cn/read.php?tid=46581611", metadata.canonicalUrl());
+	        assertEquals("[水区] 这是一个测试贴", metadata.title());
+	        assertEquals("NGA", metadata.description());
+	        assertEquals("""
+	                原标题
+	                [水区] 这是一个测试贴
+
+	                正文
+	                第一段内容 第二段内容，顺便带一点 HTML & 实体。
+
+	                回帖
+	                1. 回复观点，补充背景。""", metadata.rawContent());
+	        assertTrue(metadata.thumbnailUrl().startsWith("generated://nga/thread-card/46581611"));
         assertEquals(URI.create("https://bbs.nga.cn/read.php?tid=46581611"), httpClient.lastRequestUri);
     }
 
@@ -118,9 +133,10 @@ class NgaPreviewProviderTest {
 
         PreviewMetadata metadata = provider.resolve(URI.create("https://bbs.nga.cn/read.php?tid=46581611"));
 
-        assertEquals("NGA 测试帖子", metadata.title());
-        assertEquals("NGA", metadata.description());
-    }
+	        assertEquals("NGA 测试帖子", metadata.title());
+	        assertEquals("NGA", metadata.description());
+	        assertEquals("原标题\nNGA 测试帖子\n\n正文\n帖子摘要内容", metadata.rawContent());
+	    }
 
     @Test
     void ignoresUbbMarkupInBodyWhenBuildingMetadata() {

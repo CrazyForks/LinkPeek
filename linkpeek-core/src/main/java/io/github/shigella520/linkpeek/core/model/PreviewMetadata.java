@@ -12,8 +12,36 @@ public record PreviewMetadata(
         String thumbnailUrl,
         int imageWidth,
         int imageHeight,
-        ContentType contentType
+        ContentType contentType,
+        String rawContent
 ) {
+    public PreviewMetadata(
+            String sourceUrl,
+            String canonicalUrl,
+            String providerId,
+            String title,
+            String description,
+            String siteName,
+            String thumbnailUrl,
+            int imageWidth,
+            int imageHeight,
+            ContentType contentType
+    ) {
+        this(
+                sourceUrl,
+                canonicalUrl,
+                providerId,
+                title,
+                description,
+                siteName,
+                thumbnailUrl,
+                imageWidth,
+                imageHeight,
+                contentType,
+                ""
+        );
+    }
+
     public PreviewMetadata {
         sourceUrl = require(sourceUrl, "sourceUrl");
         canonicalUrl = require(canonicalUrl, "canonicalUrl");
@@ -23,6 +51,7 @@ public record PreviewMetadata(
         siteName = defaultString(siteName);
         thumbnailUrl = require(thumbnailUrl, "thumbnailUrl");
         contentType = Objects.requireNonNull(contentType, "contentType must not be null");
+        rawContent = defaultString(rawContent);
 
         if (imageWidth <= 0) {
             imageWidth = 1200;

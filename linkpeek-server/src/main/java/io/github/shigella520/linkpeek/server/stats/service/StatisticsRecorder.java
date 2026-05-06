@@ -42,7 +42,7 @@ public class StatisticsRecorder {
     ) {
         PreviewMetadata metadata = result.metadata();
         recordEvent(
-                result.resolvedPreview().previewKey().value(),
+                result.previewKey().value(),
                 metadata.providerId(),
                 metadata.canonicalUrl(),
                 metadata.title(),
@@ -51,6 +51,8 @@ public class StatisticsRecorder {
                 clientType,
                 httpStatus,
                 result.cacheHit(),
+                result.aiRequested(),
+                result.aiSucceeded(),
                 durationMs,
                 null
         );
@@ -72,6 +74,8 @@ public class StatisticsRecorder {
                 clientType,
                 httpStatus,
                 false,
+                false,
+                false,
                 durationMs,
                 null
         );
@@ -85,7 +89,7 @@ public class StatisticsRecorder {
     ) {
         PreviewMetadata metadata = result.metadata();
         recordEvent(
-                result.resolvedPreview().previewKey().value(),
+                result.previewKey().value(),
                 metadata.providerId(),
                 metadata.canonicalUrl(),
                 metadata.title(),
@@ -94,6 +98,8 @@ public class StatisticsRecorder {
                 clientType,
                 httpStatus,
                 result.cacheHit(),
+                result.aiRequested(),
+                result.aiSucceeded(),
                 durationMs,
                 null
         );
@@ -104,7 +110,7 @@ public class StatisticsRecorder {
         long occurredAt = Instant.now(clock).toEpochMilli();
         try {
             statsLinkMapper.upsertLink(linkRecord(
-                    result.resolvedPreview().previewKey().value(),
+                    result.previewKey().value(),
                     metadata.providerId(),
                     metadata.canonicalUrl(),
                     metadata.title(),
@@ -114,7 +120,7 @@ public class StatisticsRecorder {
         } catch (RuntimeException exception) {
             log.warn(
                     "statistics_link_metadata_record_failed previewKey={} provider={}",
-                    result.resolvedPreview().previewKey().value(),
+                    result.previewKey().value(),
                     metadata.providerId(),
                     exception
             );
@@ -138,6 +144,8 @@ public class StatisticsRecorder {
                 clientType,
                 httpStatus,
                 false,
+                false,
+                false,
                 durationMs,
                 errorCode
         );
@@ -159,6 +167,8 @@ public class StatisticsRecorder {
                 StatisticsClientType.MEDIA,
                 200,
                 cacheHit,
+                false,
+                false,
                 durationMs,
                 null
         );
@@ -174,6 +184,8 @@ public class StatisticsRecorder {
             StatisticsClientType clientType,
             int httpStatus,
             boolean cacheHit,
+            boolean aiRequested,
+            boolean aiSucceeded,
             long durationMs,
             StatisticsErrorCode errorCode
     ) {
@@ -197,6 +209,8 @@ public class StatisticsRecorder {
                     clientType,
                     httpStatus,
                     cacheHit,
+                    aiRequested,
+                    aiSucceeded,
                     durationMs,
                     errorCode
             ));
@@ -238,6 +252,8 @@ public class StatisticsRecorder {
             StatisticsClientType clientType,
             int httpStatus,
             boolean cacheHit,
+            boolean aiRequested,
+            boolean aiSucceeded,
             long durationMs,
             StatisticsErrorCode errorCode
     ) {
@@ -249,6 +265,8 @@ public class StatisticsRecorder {
         record.setClientType(clientType.name());
         record.setHttpStatus(httpStatus);
         record.setCacheHit(cacheHit);
+        record.setAiRequested(aiRequested);
+        record.setAiSucceeded(aiSucceeded);
         record.setDurationMs(durationMs);
         record.setErrorCode(errorCode == null ? null : errorCode.name());
         return record;

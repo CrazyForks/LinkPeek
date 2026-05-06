@@ -4,6 +4,8 @@ public class WindowSummaryRow {
     private long createCount;
     private long openCount;
     private long failedCount;
+    private long aiRequestedCount;
+    private long aiSucceededCount;
     private long allPreviewRequests;
     private long uniqueLinkCount;
 
@@ -29,6 +31,22 @@ public class WindowSummaryRow {
 
     public void setFailedCount(long failedCount) {
         this.failedCount = failedCount;
+    }
+
+    public long getAiRequestedCount() {
+        return aiRequestedCount;
+    }
+
+    public void setAiRequestedCount(long aiRequestedCount) {
+        this.aiRequestedCount = aiRequestedCount;
+    }
+
+    public long getAiSucceededCount() {
+        return aiSucceededCount;
+    }
+
+    public void setAiSucceededCount(long aiSucceededCount) {
+        this.aiSucceededCount = aiSucceededCount;
     }
 
     public long getAllPreviewRequests() {

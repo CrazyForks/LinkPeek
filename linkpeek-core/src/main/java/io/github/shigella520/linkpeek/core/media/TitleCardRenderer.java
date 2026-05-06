@@ -148,7 +148,7 @@ public final class TitleCardRenderer {
         }
     }
 
-    private static TextLayout fitTitleLayout(Graphics2D graphics, String title, int maxWidth, int maxHeight) {
+    static TextLayout fitTitleLayout(Graphics2D graphics, String title, int maxWidth, int maxHeight) {
         for (int fontSize = MAX_FONT_SIZE; fontSize >= MIN_FONT_SIZE; fontSize -= FONT_STEP) {
             Font font = selectFont(title, fontSize);
             graphics.setFont(font);
@@ -241,7 +241,22 @@ public final class TitleCardRenderer {
 
     private static boolean isBreakOpportunity(int codePoint) {
         return Character.isWhitespace(codePoint)
+                || isCjkCodePoint(codePoint)
                 || "-_/\\|,.，。！？、:：;；)]）】》」』】".indexOf(codePoint) >= 0;
+    }
+
+    private static boolean isCjkCodePoint(int codePoint) {
+        Character.UnicodeBlock block = Character.UnicodeBlock.of(codePoint);
+        return block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
+                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
+                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B
+                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_C
+                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_D
+                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_E
+                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_F
+                || block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_G
+                || block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
+                || block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS_SUPPLEMENT;
     }
 
     private static String ellipsize(FontMetrics metrics, String text, int maxWidth) {
@@ -342,6 +357,6 @@ public final class TitleCardRenderer {
     ) {
     }
 
-    private record TextLayout(Font font, List<String> lines) {
+    record TextLayout(Font font, List<String> lines) {
     }
 }

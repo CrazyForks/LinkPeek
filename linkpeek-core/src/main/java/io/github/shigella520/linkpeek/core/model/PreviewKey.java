@@ -23,9 +23,17 @@ public record PreviewKey(String value) {
 
     public static PreviewKey fromCanonicalUrl(URI canonicalUrl) {
         String normalized = UrlNormalizer.normalizeHttpUrl(canonicalUrl).toString();
+        return fromStableValue(normalized);
+    }
+
+    public static PreviewKey fromStableValue(String value) {
+        Objects.requireNonNull(value, "value must not be null");
+        if (value.isBlank()) {
+            throw new IllegalArgumentException("value must not be blank");
+        }
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(normalized.getBytes(StandardCharsets.UTF_8));
+            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
             return new PreviewKey(HexFormat.of().formatHex(hash));
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 is not available", exception);

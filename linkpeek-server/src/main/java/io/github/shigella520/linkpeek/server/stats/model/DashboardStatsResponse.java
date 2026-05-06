@@ -42,9 +42,13 @@ public record DashboardStatsResponse(
             long createCount,
             long openCount,
             long failedCount,
+            long aiRequestedCount,
+            long aiSucceededCount,
             double previewSuccessRate,
             double createRate,
-            Double openCreateRatio
+            Double openCreateRatio,
+            double aiRenderRate,
+            double aiSuccessRate
     ) {
     }
 

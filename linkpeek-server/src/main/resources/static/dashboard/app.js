@@ -1,5 +1,6 @@
 (function () {
     const RANGE_VALUES = ["7d", "30d", "90d", "180d"];
+    const DEFAULT_STYLE = "FREESTYLE";
     const REFRESH_INTERVAL_MS = 30_000;
     const STATS_ADMIN_REVEAL_KEY = "6";
     const STATS_ADMIN_REVEAL_COUNT = 3;
@@ -36,7 +37,8 @@
 
     const state = {
         range: new URLSearchParams(window.location.search).get("range") || "30d",
-        charts: {}
+        charts: {},
+        styles: []
     };
 
     if (!RANGE_VALUES.includes(state.range)) {
@@ -46,6 +48,7 @@
     function init() {
         bindRangeSwitch();
         bindLinkBuilder();
+        loadPreviewStyles();
         bindStatsAdminPurge();
         bindParallax();
         initRevealObserver();
@@ -57,15 +60,16 @@
 
     function bindLinkBuilder() {
         const input = document.getElementById("link-builder-input");
+        const styleSelect = document.getElementById("link-builder-style");
         const button = document.getElementById("link-builder-button");
         const output = document.getElementById("link-builder-output");
         const feedback = document.getElementById("link-builder-feedback");
-        if (!input || !button || !output || !feedback) {
+        if (!input || !styleSelect || !button || !output || !feedback) {
             return;
         }
 
         const refresh = () => {
-            const previewUrl = buildPreviewUrl(input.value.trim());
+            const previewUrl = buildPreviewUrl(input.value.trim(), styleSelect.value);
             output.textContent = previewUrl || "https://your-linkpeek-host/preview?url=...";
             output.classList.toggle("is-ready", Boolean(previewUrl));
             button.disabled = !previewUrl;
@@ -82,6 +86,7 @@
         };
 
         input.addEventListener("input", refresh);
+        styleSelect.addEventListener("change", refresh);
         input.addEventListener("keydown", (event) => {
             if (event.key === "Enter") {
                 event.preventDefault();
@@ -89,7 +94,7 @@
             }
         });
         button.addEventListener("click", async () => {
-            const previewUrl = buildPreviewUrl(input.value.trim());
+            const previewUrl = buildPreviewUrl(input.value.trim(), styleSelect.value);
             if (!previewUrl) {
                 setBuilderFeedback(feedback, "Please enter a valid http/https URL.", "is-error");
                 return;
@@ -111,6 +116,49 @@
         refresh();
     }
 
+    async function loadPreviewStyles() {
+        const select = document.getElementById("link-builder-style");
+        if (!select) {
+            return;
+        }
+        try {
+            const response = await fetch("/api/preview/styles", {
+                headers: {
+                    Accept: "application/json"
+                }
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            const payload = await response.json();
+            state.styles = Array.isArray(payload.styles)
+                ? payload.styles.filter((style) => typeof style === "string" && style.trim())
+                : [];
+        } catch (error) {
+            console.error("Failed to load preview styles", error);
+            state.styles = [];
+        }
+        renderPreviewStyles(select);
+    }
+
+    function renderPreviewStyles(select) {
+        const selected = select.value;
+        select.replaceChildren();
+
+        state.styles.forEach((style) => {
+            const option = document.createElement("option");
+            option.value = style;
+            option.textContent = style;
+            select.appendChild(option);
+        });
+
+        select.disabled = state.styles.length === 0;
+        select.value = state.styles.includes(selected)
+            ? selected
+            : (state.styles.includes(DEFAULT_STYLE) ? DEFAULT_STYLE : state.styles[0] || "");
+        select.dispatchEvent(new Event("change"));
+    }
+
     function bindRangeSwitch() {
         document.querySelectorAll("#range-switch button").forEach((button) => {
             button.classList.toggle("is-active", button.dataset.range === state.range);
@@ -129,26 +177,12 @@
 
     function bindStatsAdminPurge() {
         const trigger = document.getElementById("stats-admin-trigger");
-        const modal = document.getElementById("stats-admin-modal");
-        const closeButton = document.getElementById("stats-admin-close");
-        const cancelButton = document.getElementById("stats-admin-cancel");
-        const form = document.getElementById("stats-admin-form");
-        const passwordInput = document.getElementById("stats-admin-password");
-        const feedback = document.getElementById("stats-admin-feedback");
-        const submitButton = document.getElementById("stats-admin-submit");
-        if (!trigger || !modal || !closeButton || !cancelButton || !form || !passwordInput || !feedback || !submitButton) {
+        if (!trigger) {
             return;
         }
 
         let revealProgress = 0;
         let revealTimerId = 0;
-
-        const setSubmitting = (submitting) => {
-            passwordInput.disabled = submitting;
-            submitButton.disabled = submitting;
-            cancelButton.disabled = submitting;
-            closeButton.disabled = submitting;
-        };
 
         const resetRevealProgress = () => {
             revealProgress = 0;
@@ -175,28 +209,11 @@
             return eventTarget.isContentEditable || tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT";
         };
 
-        const openModal = () => {
-            modal.hidden = false;
-            document.body.style.overflow = "hidden";
-            setStatsAdminFeedback(feedback, "输入管理密码后会发起清理请求。", "");
-            window.setTimeout(() => passwordInput.focus(), 0);
-        };
-
-        const closeModal = (options = {}) => {
-            modal.hidden = true;
-            document.body.style.overflow = "";
-            setSubmitting(false);
-            if (options.clearPassword !== false) {
-                form.reset();
-            }
-            setStatsAdminFeedback(feedback, "输入管理密码后会发起清理请求。", "");
-        };
-
-        trigger.addEventListener("click", openModal);
-        closeButton.addEventListener("click", () => closeModal());
-        cancelButton.addEventListener("click", () => closeModal());
+        trigger.addEventListener("click", () => {
+            window.location.href = "/admin";
+        });
         document.addEventListener("keydown", (event) => {
-            if (modal.hidden && !isTypingTarget(event.target) && event.key === STATS_ADMIN_REVEAL_KEY) {
+            if (trigger.hidden && !isTypingTarget(event.target) && event.key === STATS_ADMIN_REVEAL_KEY) {
                 revealProgress += 1;
                 if (revealProgress >= STATS_ADMIN_REVEAL_COUNT) {
                     revealTrigger();
@@ -211,54 +228,6 @@
             }
             if (event.key !== STATS_ADMIN_REVEAL_KEY) {
                 resetRevealProgress();
-            }
-        });
-        modal.addEventListener("click", (event) => {
-            if (event.target instanceof HTMLElement && event.target.dataset.closeModal === "true") {
-                closeModal();
-            }
-        });
-        document.addEventListener("keydown", (event) => {
-            if (event.key === "Escape" && !modal.hidden) {
-                closeModal();
-            }
-        });
-
-        form.addEventListener("submit", async (event) => {
-            event.preventDefault();
-            const password = passwordInput.value.trim();
-            if (!password) {
-                setStatsAdminFeedback(feedback, "请输入管理密码。", "is-error");
-                passwordInput.focus();
-                return;
-            }
-
-            setSubmitting(true);
-            setStatsAdminFeedback(feedback, "正在清理统计数据...", "is-loading");
-
-            try {
-                const response = await fetch(`/api/stats/admin/purge-all?password=${encodeURIComponent(password)}`, {
-                    headers: {
-                        Accept: "application/json"
-                    }
-                });
-
-                if (!response.ok) {
-                    throw new Error(resolveStatsAdminErrorMessage(response.status));
-                }
-
-                const result = await response.json();
-                setStatsAdminFeedback(
-                    feedback,
-                    `已清理 ${numberFormatter.format(result.deletedEvents || 0)} 条事件，${numberFormatter.format(result.deletedLinks || 0)} 条链接。`,
-                    "is-success"
-                );
-                await loadDashboard();
-                window.setTimeout(() => closeModal(), 900);
-            } catch (error) {
-                setStatsAdminFeedback(feedback, error.message || "清理失败，请稍后重试。", "is-error");
-                setSubmitting(false);
-                passwordInput.focus();
             }
         });
     }
@@ -315,16 +284,6 @@
         }
     }
 
-    function resolveStatsAdminErrorMessage(status) {
-        if (status === 403) {
-            return "管理密码错误。";
-        }
-        if (status === 404) {
-            return "当前环境未启用统计清理。";
-        }
-        return `清理失败，HTTP ${status}。`;
-    }
-
     function render(payload) {
         setText("generated-at", `Updated ${dateTimeFormatter.format(new Date(payload.generatedAt))}`);
         setText("timezone", payload.timezone);
@@ -348,10 +307,14 @@
 
         setText("preview-success-rate", formatRatio(payload.funnel.previewSuccessRate));
         setText("preview-success-rate-inline", formatRatio(payload.funnel.previewSuccessRate));
-        setText("create-rate", formatRatio(payload.funnel.createRate));
-        setText("create-rate-inline", formatRatio(payload.funnel.createRate));
         setText("open-create-ratio", formatRatio(payload.funnel.openCreateRatio));
         setText("open-create-ratio-inline", formatRatio(payload.funnel.openCreateRatio));
+        animateValue("ai-requested-count", payload.funnel.aiRequestedCount);
+        animateValue("ai-requested-count-inline", payload.funnel.aiRequestedCount);
+        setText("ai-rendered-count", `已渲染 ${numberFormatter.format(payload.funnel.aiSucceededCount)}`);
+        setText("ai-render-ratio", formatRatio(payload.funnel.aiRenderRate));
+        setText("ai-render-rate-inline", formatRatio(payload.funnel.aiRenderRate));
+        setText("ai-success-rate-inline", formatRatio(payload.funnel.aiSuccessRate));
 
         renderGrowthChart(payload.growthTrend);
         renderFunnelChart(payload.funnel);
@@ -490,7 +453,7 @@
             },
             yAxis: {
                 type: "category",
-                data: ["All", "Created", "Opened", "Failed"],
+                data: ["All", "Created", "Opened", "AI Requested", "AI Rendered", "Failed"],
                 axisLine: {show: false},
                 axisTick: {show: false},
                 axisLabel: {color: CHART_TEXT, fontWeight: 600}
@@ -508,11 +471,13 @@
                         funnel.allPreviewRequests,
                         funnel.createCount,
                         funnel.openCount,
+                        funnel.aiRequestedCount,
+                        funnel.aiSucceededCount,
                         funnel.failedCount
                     ],
                     itemStyle: {
                         borderRadius: 999,
-                        color: (params) => [COLORS.ink, COLORS.blue, COLORS.orange, "#d97706"][params.dataIndex],
+                        color: (params) => [COLORS.ink, COLORS.blue, COLORS.orange, "#13b981", "#0f8f5f", "#d97706"][params.dataIndex],
                         shadowBlur: 8,
                         shadowColor: "rgba(23, 23, 23, 0.05)"
                     },
@@ -724,7 +689,7 @@
     function renderTopLinks(topLinks) {
         const tbody = document.getElementById("top-links-body");
         if (!topLinks.length) {
-            tbody.innerHTML = '<tr><td colspan="6" class="empty-row">No link activity in this range</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-row">No link activity in this range</td></tr>';
             return;
         }
 
@@ -741,7 +706,6 @@
                         </div>
                     </td>
                     <td>${safeProvider}</td>
-                    <td>${numberFormatter.format(link.createdCount)}</td>
                     <td>${numberFormatter.format(link.openedCount)}</td>
                     <td>${dateTimeFormatter.format(new Date(link.firstSeenAt))}</td>
                     <td>${dateTimeFormatter.format(new Date(link.lastSeenAt))}</td>
@@ -786,7 +750,7 @@
         Object.values(state.charts).forEach((chart) => chart.resize());
     }
 
-    function buildPreviewUrl(value) {
+    function buildPreviewUrl(value, style) {
         if (!value) {
             return "";
         }
@@ -798,6 +762,9 @@
             }
             const previewUrl = new URL("/preview", window.location.origin);
             previewUrl.searchParams.set("url", sourceUrl.toString());
+            if (style) {
+                previewUrl.searchParams.set("style", style);
+            }
             return previewUrl.toString();
         } catch (error) {
             return "";

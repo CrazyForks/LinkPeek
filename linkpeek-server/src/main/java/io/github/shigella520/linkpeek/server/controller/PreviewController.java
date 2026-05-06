@@ -80,6 +80,11 @@ public class PreviewController {
             )
             @RequestParam("url") String url,
             @Parameter(
+                    description = "可选的 AI 标题风格。命中后台提示词且目标 provider 使用文本卡片时生效。",
+                    example = "fun"
+            )
+            @RequestParam(name = "style", required = false) String style,
+            @Parameter(
                     description = "渲染模式覆盖。`auto` 按 User-Agent 自动判断，`crawler` 强制返回 OG HTML，`redirect` 强制返回 302。Swagger UI 调试时建议填 `crawler`。",
                     example = "crawler"
             )
@@ -112,13 +117,13 @@ public class PreviewController {
                 );
             }
 
-            PreviewService.PreviewLoadResult result = previewService.loadPreview(resolvedPreview);
-            String body = htmlPageRenderer.renderPreview(result.metadata(), result.resolvedPreview().previewKey(), properties.getBaseUrl());
+            PreviewService.PreviewLoadResult result = previewService.loadPreview(resolvedPreview, style);
+            String body = htmlPageRenderer.renderPreview(result.metadata(), result.previewKey(), properties.getBaseUrl());
             long durationMs = elapsedMillis(startedAt);
             statisticsRecorder.recordPreviewCreated(result, clientType, 200, durationMs);
             log.info(
                     "preview_served previewKey={} provider={} cacheHit={} durationMs={} status={}",
-                    result.resolvedPreview().previewKey().value(),
+                    result.previewKey().value(),
                     result.metadata().providerId(),
                     result.cacheHit(),
                     durationMs,

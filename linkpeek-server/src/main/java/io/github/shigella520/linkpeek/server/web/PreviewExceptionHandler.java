@@ -1,6 +1,7 @@
 package io.github.shigella520.linkpeek.server.web;
 
 import io.github.shigella520.linkpeek.core.error.MetadataNotFoundException;
+import io.github.shigella520.linkpeek.core.error.PreviewException;
 import io.github.shigella520.linkpeek.server.render.HtmlPageRenderer;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -21,6 +22,13 @@ public class PreviewExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .contentType(MediaType.TEXT_HTML)
                 .body(htmlPageRenderer.renderError("Preview Not Found", exception.getMessage()));
+    }
+
+    @ExceptionHandler(PreviewException.class)
+    public ResponseEntity<String> handlePreviewException(PreviewException exception) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .contentType(MediaType.TEXT_HTML)
+                .body(htmlPageRenderer.renderError("Preview Error", exception.getMessage()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

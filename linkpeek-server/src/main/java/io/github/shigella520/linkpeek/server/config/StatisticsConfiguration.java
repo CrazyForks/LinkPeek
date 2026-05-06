@@ -3,6 +3,7 @@ package io.github.shigella520.linkpeek.server.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.init.ResourceDatabasePopulator;
 import org.sqlite.SQLiteConfig;
@@ -13,6 +14,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.Locale;
 
 @Configuration
 public class StatisticsConfiguration {
@@ -64,6 +66,29 @@ public class StatisticsConfiguration {
                 ResourceDatabasePopulator statisticsSchemaPopulator
         ) {
             statisticsSchemaPopulator.execute(dataSource);
+            applyIdempotentMigrations(dataSource);
+        }
+
+        private void applyIdempotentMigrations(DataSource dataSource) {
+            JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
+            ensureColumn(jdbcTemplate, "stats_event", "ai_requested", "INTEGER NOT NULL DEFAULT 0");
+            ensureColumn(jdbcTemplate, "stats_event", "ai_succeeded", "INTEGER NOT NULL DEFAULT 0");
+            ensureColumn(jdbcTemplate, "ai_provider", "request_timeout_seconds", "INTEGER NOT NULL DEFAULT 45");
+        }
+
+        private void ensureColumn(
+                JdbcTemplate jdbcTemplate,
+                String tableName,
+                String columnName,
+                String columnDefinition
+        ) {
+            boolean exists = jdbcTemplate.queryForList("PRAGMA table_info(" + tableName + ")")
+                    .stream()
+                    .map(row -> String.valueOf(row.get("name")).toLowerCase(Locale.ROOT))
+                    .anyMatch(columnName::equals);
+            if (!exists) {
+                jdbcTemplate.execute("ALTER TABLE " + tableName + " ADD COLUMN " + columnName + " " + columnDefinition);
+            }
         }
     }
 }

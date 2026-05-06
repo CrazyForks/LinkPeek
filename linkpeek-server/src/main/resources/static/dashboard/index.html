@@ -60,17 +60,23 @@
                     </div>
                     <span class="link-builder-badge">Copy to clipboard</span>
                 </div>
-                <label class="link-builder-field" for="link-builder-input">
-                    <span>Source URL</span>
-                    <input
-                        id="link-builder-input"
-                        type="url"
-                        inputmode="url"
-                        placeholder="https://www.bilibili.com/video/BV..."
-                        autocomplete="off"
-                        spellcheck="false"
-                    >
-                </label>
+                <div class="link-builder-form">
+                    <label class="link-builder-field" for="link-builder-input">
+                        <span>Source URL</span>
+                        <input
+                            id="link-builder-input"
+                            type="url"
+                            inputmode="url"
+                            placeholder="https://www.bilibili.com/video/BV..."
+                            autocomplete="off"
+                            spellcheck="false"
+                        >
+                    </label>
+                    <label class="link-builder-field link-builder-style-field" for="link-builder-style">
+                        <span>Style</span>
+                        <select id="link-builder-style" disabled></select>
+                    </label>
+                </div>
                 <div class="link-builder-actions">
                     <button id="link-builder-button" type="button" disabled>Copy LinkPeek URL</button>
                     <span id="link-builder-feedback" role="status" aria-live="polite">
@@ -104,6 +110,16 @@
                     <strong id="open-count">0</strong>
                     <em id="open-count-trend">-</em>
                 </div>
+                <div class="floating-chip floating-chip-ai-render">
+                    <span>AI 渲染占比</span>
+                    <strong id="ai-render-ratio">0%</strong>
+                    <em>渲染 / 创建</em>
+                </div>
+                <div class="floating-chip floating-chip-ai-requested">
+                    <span>AI 请求数</span>
+                    <strong id="ai-requested-count">0</strong>
+                    <em id="ai-rendered-count">已渲染 0</em>
+                </div>
                 <div class="floating-chip floating-chip-accent">
                     <span>预览成功率</span>
                     <strong id="preview-success-rate">0%</strong>
@@ -121,11 +137,7 @@
                         <strong id="new-link-count">0</strong>
                         <span id="new-link-count-trend">-</span>
                     </article>
-                    <article class="glass-card glass-card-tint-peach hero-metric">
-                        <p>创建率</p>
-                        <strong id="create-rate">0%</strong>
-                        <span>预览请求转化</span>
-                    </article>
+                    <div class="hero-metric-spacer" aria-hidden="true"></div>
                     <article class="glass-card glass-card-tint-lilac hero-metric">
                         <p>打开 / 创建比</p>
                         <strong id="open-create-ratio">0%</strong>
@@ -204,12 +216,20 @@
                             <strong id="preview-success-rate-inline">0%</strong>
                         </div>
                         <div class="funnel-pill">
-                            <span>创建率</span>
-                            <strong id="create-rate-inline">0%</strong>
+                            <span>AI 请求数</span>
+                            <strong id="ai-requested-count-inline">0</strong>
                         </div>
                         <div class="funnel-pill">
                             <span>打开 / 创建比</span>
                             <strong id="open-create-ratio-inline">0%</strong>
+                        </div>
+                        <div class="funnel-pill">
+                            <span>AI 渲染占比</span>
+                            <strong id="ai-render-rate-inline">0%</strong>
+                        </div>
+                        <div class="funnel-pill">
+                            <span>AI 成功率</span>
+                            <strong id="ai-success-rate-inline">0%</strong>
                         </div>
                     </div>
                     <div class="chart chart-medium" id="funnel-chart"></div>
@@ -273,7 +293,6 @@
                             <tr>
                                 <th>标题</th>
                                 <th>Provider</th>
-                                <th>创建</th>
                                 <th>打开</th>
                                 <th>首次出现</th>
                                 <th>最近活跃</th>
@@ -281,7 +300,7 @@
                             </thead>
                             <tbody id="top-links-body">
                             <tr>
-                                <td colspan="6" class="empty-row">暂无数据</td>
+                                <td colspan="5" class="empty-row">暂无数据</td>
                             </tr>
                             </tbody>
                         </table>
@@ -296,56 +315,10 @@
     type="button"
     class="stats-admin-trigger"
     id="stats-admin-trigger"
-    aria-haspopup="dialog"
-    aria-controls="stats-admin-modal"
     hidden
 >
-    清理统计数据
+    管理后台
 </button>
-
-<div class="stats-admin-modal-shell" id="stats-admin-modal" hidden>
-    <div class="stats-admin-modal-backdrop" data-close-modal="true"></div>
-    <section
-        class="stats-admin-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="stats-admin-title"
-        aria-describedby="stats-admin-description"
-    >
-        <div class="stats-admin-modal-head">
-            <div>
-                <p class="stats-admin-kicker">Management</p>
-                <h2 id="stats-admin-title">清理统计数据</h2>
-            </div>
-            <button type="button" class="stats-admin-close" id="stats-admin-close" aria-label="关闭">
-                <span aria-hidden="true">×</span>
-            </button>
-        </div>
-        <p class="stats-admin-description" id="stats-admin-description">
-            这个操作会删除全部统计事件和链接聚合记录，执行后无法恢复。
-        </p>
-        <form class="stats-admin-form" id="stats-admin-form">
-            <label class="stats-admin-field" for="stats-admin-password">
-                <span>管理密码</span>
-                <input
-                    id="stats-admin-password"
-                    name="password"
-                    type="password"
-                    autocomplete="current-password"
-                    placeholder="请输入管理密码"
-                    required
-                >
-            </label>
-            <p class="stats-admin-feedback" id="stats-admin-feedback" role="status" aria-live="polite">
-                输入管理密码后会发起清理请求。
-            </p>
-            <div class="stats-admin-actions">
-                <button type="button" class="stats-admin-secondary" id="stats-admin-cancel">取消</button>
-                <button type="submit" class="stats-admin-danger" id="stats-admin-submit">确认清理</button>
-            </div>
-        </form>
-    </section>
-</div>
 
 <script src="/webjars/echarts/5.5.1/dist/echarts.min.js"></script>
 <script src="/dashboard/app.js"></script>

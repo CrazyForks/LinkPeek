@@ -14,6 +14,10 @@
 # 这里只保留服务根地址。支持判定接口和预览入口都从同一个根地址派生，
 # 自部署用户只需要改这一处。
 base_url="https://linkpeek.jianyutan.com"
+
+# 可选 AI 标题样式。留空时不追加 style 参数；需要时改成后台提示词设置里的 style。
+style=""
+
 base_url="${base_url%/}"
 support_url="${base_url}/api/preview/support"
 preview_base_url="${base_url}/preview?url="
@@ -64,6 +68,10 @@ fi
 # 支持判定接口只返回判断结果；确认支持后，再在本地拼接最终预览链接。
 encoded_url="$(url_encode "$input")"
 final_url="${preview_base_url}${encoded_url}"
+if [[ -n "${style//[[:space:]]/}" ]]; then
+  encoded_style="$(url_encode "$style")"
+  final_url="${final_url}&style=${encoded_style}"
+fi
 
 printf '%s' "$final_url" | pbcopy
 open /System/Applications/Messages.app

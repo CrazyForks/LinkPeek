@@ -11,6 +11,8 @@
             provider_id,
             http_status,
             cache_hit,
+            ai_requested,
+            ai_succeeded,
             duration_ms,
             client_type,
             error_code
@@ -22,6 +24,8 @@
             #{providerId},
             #{httpStatus},
             #{cacheHit},
+            #{aiRequested},
+            #{aiSucceeded},
             #{durationMs},
             #{clientType},
             #{errorCode}

@@ -7,6 +7,8 @@ public class StatisticsEventRecord {
     private String providerId;
     private int httpStatus;
     private boolean cacheHit;
+    private boolean aiRequested;
+    private boolean aiSucceeded;
     private long durationMs;
     private String clientType;
     private String errorCode;
@@ -57,6 +59,22 @@ public class StatisticsEventRecord {
 
     public void setCacheHit(boolean cacheHit) {
         this.cacheHit = cacheHit;
+    }
+
+    public boolean isAiRequested() {
+        return aiRequested;
+    }
+
+    public void setAiRequested(boolean aiRequested) {
+        this.aiRequested = aiRequested;
+    }
+
+    public boolean isAiSucceeded() {
+        return aiSucceeded;
+    }
+
+    public void setAiSucceeded(boolean aiSucceeded) {
+        this.aiSucceeded = aiSucceeded;
     }
 
     public long getDurationMs() {

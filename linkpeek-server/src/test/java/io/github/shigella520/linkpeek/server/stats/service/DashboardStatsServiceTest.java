@@ -83,13 +83,18 @@ class DashboardStatsServiceTest {
 
         insertEvent(now, "preview-1", "bilibili", StatisticsEventType.PREVIEW_CREATED, StatisticsClientType.CRAWLER, 200, false, 15, null);
         insertEvent(now, "preview-1", "bilibili", StatisticsEventType.PREVIEW_OPENED, StatisticsClientType.BROWSER, 302, false, 8, null);
+        insertEvent(now, "preview-2", "bilibili", StatisticsEventType.PREVIEW_CREATED, StatisticsClientType.CRAWLER, 200, false, true, true, 18, null);
         insertEvent(now, null, null, StatisticsEventType.PREVIEW_FAILED, StatisticsClientType.CRAWLER, 400, false, 2, StatisticsErrorCode.INVALID_URL);
 
         DashboardStatsResponse response = dashboardStatsService.getDashboardStats(DashboardRange.DAYS_30);
 
-        assertEquals(1, response.overview().createCount().value());
+        assertEquals(2, response.overview().createCount().value());
         assertEquals(1, response.overview().openCount().value());
         assertEquals(2, response.overview().newLinkCount().value());
+        assertEquals(1, response.funnel().aiRequestedCount());
+        assertEquals(1, response.funnel().aiSucceededCount());
+        assertEquals(0.5, response.funnel().aiRenderRate());
+        assertEquals(1.0, response.funnel().aiSuccessRate());
         assertEquals(1, response.failureBreakdown().invalid());
         assertFalse(response.topLinks().isEmpty());
         assertEquals("https://www.bilibili.com/video/BV1", response.topLinks().get(0).canonicalUrl());
@@ -146,6 +151,22 @@ class DashboardStatsServiceTest {
             long durationMs,
             StatisticsErrorCode errorCode
     ) {
+        insertEvent(occurredAt, previewKey, providerId, eventType, clientType, httpStatus, cacheHit, false, false, durationMs, errorCode);
+    }
+
+    private void insertEvent(
+            long occurredAt,
+            String previewKey,
+            String providerId,
+            StatisticsEventType eventType,
+            StatisticsClientType clientType,
+            int httpStatus,
+            boolean cacheHit,
+            boolean aiRequested,
+            boolean aiSucceeded,
+            long durationMs,
+            StatisticsErrorCode errorCode
+    ) {
         StatisticsEventRecord record = new StatisticsEventRecord();
         record.setOccurredAt(occurredAt);
         record.setPreviewKey(previewKey);
@@ -154,6 +175,8 @@ class DashboardStatsServiceTest {
         record.setClientType(clientType.name());
         record.setHttpStatus(httpStatus);
         record.setCacheHit(cacheHit);
+        record.setAiRequested(aiRequested);
+        record.setAiSucceeded(aiSucceeded);
         record.setDurationMs(durationMs);
         record.setErrorCode(errorCode == null ? null : errorCode.name());
         statsEventMapper.insertEvent(record);
