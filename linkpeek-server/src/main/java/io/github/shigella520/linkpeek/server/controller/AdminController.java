@@ -9,6 +9,7 @@ import io.github.shigella520.linkpeek.server.admin.service.AiTitleConfigService;
 import io.github.shigella520.linkpeek.server.admin.service.ProviderConfigService;
 import io.github.shigella520.linkpeek.server.admin.service.ServiceLogService;
 import io.github.shigella520.linkpeek.server.ai.AiApiKind;
+import io.github.shigella520.linkpeek.server.ai.AiProviderDowngradeService;
 import io.github.shigella520.linkpeek.server.ai.AiTitleClient;
 import io.github.shigella520.linkpeek.server.ai.AiTitlePrompt;
 import io.github.shigella520.linkpeek.server.stats.service.StatisticsMaintenanceService;
@@ -59,6 +60,7 @@ public class AdminController {
     private final AiTitleConfigService aiTitleConfigService;
     private final ProviderConfigService providerConfigService;
     private final AiProviderMapper aiProviderMapper;
+    private final AiProviderDowngradeService aiProviderDowngradeService;
     private final AiTitleClient aiTitleClient;
     private final ServiceLogService serviceLogService;
     private final StatisticsMaintenanceService statisticsMaintenanceService;
@@ -70,6 +72,7 @@ public class AdminController {
             AiTitleConfigService aiTitleConfigService,
             ProviderConfigService providerConfigService,
             AiProviderMapper aiProviderMapper,
+            AiProviderDowngradeService aiProviderDowngradeService,
             AiTitleClient aiTitleClient,
             ServiceLogService serviceLogService,
             StatisticsMaintenanceService statisticsMaintenanceService,
@@ -80,6 +83,7 @@ public class AdminController {
         this.aiTitleConfigService = aiTitleConfigService;
         this.providerConfigService = providerConfigService;
         this.aiProviderMapper = aiProviderMapper;
+        this.aiProviderDowngradeService = aiProviderDowngradeService;
         this.aiTitleClient = aiTitleClient;
         this.serviceLogService = serviceLogService;
         this.statisticsMaintenanceService = statisticsMaintenanceService;
@@ -202,6 +206,31 @@ public class AdminController {
     public List<AiProviderRecord> aiProviders(HttpServletRequest request) {
         adminAuthService.requireAuthenticated(request);
         return aiProviderMapper.selectAllProviders();
+    }
+
+    @GetMapping("/ai-provider-downgrade-config")
+    public AiProviderDowngradeService.ConfigResponse aiProviderDowngradeConfig(HttpServletRequest request) {
+        adminAuthService.requireAuthenticated(request);
+        return aiProviderDowngradeService.config();
+    }
+
+    @PutMapping("/ai-provider-downgrade-config")
+    public AiProviderDowngradeService.ConfigResponse saveAiProviderDowngradeConfig(
+            HttpServletRequest request,
+            @RequestBody AiProviderDowngradeRequest downgradeRequest
+    ) {
+        adminAuthService.requireAuthenticated(request);
+        if (downgradeRequest == null || downgradeRequest.autoDowngradeEnabled() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Auto downgrade enabled value is required.");
+        }
+        try {
+            return aiProviderDowngradeService.saveConfig(
+                    downgradeRequest.autoDowngradeEnabled(),
+                    downgradeRequest.autoDowngradeTimeoutThreshold()
+            );
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
     }
 
     @PostMapping("/ai-providers")
@@ -416,6 +445,12 @@ public class AdminController {
             String effort,
             Integer requestTimeoutSeconds,
             String apiKey
+    ) {
+    }
+
+    public record AiProviderDowngradeRequest(
+            Boolean autoDowngradeEnabled,
+            Integer autoDowngradeTimeoutThreshold
     ) {
     }
 

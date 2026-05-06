@@ -2,6 +2,7 @@
     const state = {
         prompts: [],
         aiProviders: [],
+        aiProviderDowngradeConfig: {},
         defaultTitleFormatPrompt: "",
         logRefreshTimer: null
     };
@@ -12,6 +13,7 @@
         bindPromptForm();
         bindAiTitleConfig();
         bindProviderForm();
+        bindAiProviderDowngradeConfig();
         bindAiForm();
         bindLogs();
         bindModalClose();
@@ -123,6 +125,30 @@
         });
     }
 
+    function bindAiProviderDowngradeConfig() {
+        document.getElementById("ai-downgrade-config-form").addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const autoDowngradeEnabled = document.getElementById("ai-auto-downgrade-enabled").checked;
+            const autoDowngradeTimeoutThreshold = Number(document.getElementById("ai-auto-downgrade-timeout-threshold").value || 0);
+            if (!Number.isInteger(autoDowngradeTimeoutThreshold) || autoDowngradeTimeoutThreshold < 1 || autoDowngradeTimeoutThreshold > 100) {
+                setFeedback("ai-downgrade-config-feedback", "自动降级超时次数必须是 1-100 之间的整数。", "is-error");
+                document.getElementById("ai-auto-downgrade-timeout-threshold").focus();
+                return;
+            }
+            setFeedback("ai-downgrade-config-feedback", "正在保存自动降级配置...", "");
+            try {
+                state.aiProviderDowngradeConfig = await fetchJson("/api/admin/ai-provider-downgrade-config", {
+                    method: "PUT",
+                    body: JSON.stringify({autoDowngradeEnabled, autoDowngradeTimeoutThreshold})
+                });
+                renderAiProviderDowngradeConfig();
+                setFeedback("ai-downgrade-config-feedback", "自动降级配置已保存。", "is-success");
+            } catch (error) {
+                setFeedback("ai-downgrade-config-feedback", error.message, "is-error");
+            }
+        });
+    }
+
     function bindAiForm() {
         document.getElementById("ai-new-button").addEventListener("click", openAiFormForCreate);
         document.getElementById("ai-cancel-button").addEventListener("click", closeAiModal);
@@ -202,7 +228,14 @@
     }
 
     async function loadAll() {
-        await Promise.all([loadPrompts(), loadAiTitleConfig(), loadProviderConfig(), loadAiProviders(), loadLogs()]);
+        await Promise.all([
+            loadPrompts(),
+            loadAiTitleConfig(),
+            loadProviderConfig(),
+            loadAiProviderDowngradeConfig(),
+            loadAiProviders(),
+            loadLogs()
+        ]);
     }
 
     async function loadPrompts() {
@@ -227,6 +260,11 @@
     async function loadAiProviders() {
         state.aiProviders = await fetchJson("/api/admin/ai-providers");
         renderAiProviders();
+    }
+
+    async function loadAiProviderDowngradeConfig() {
+        state.aiProviderDowngradeConfig = await fetchJson("/api/admin/ai-provider-downgrade-config");
+        renderAiProviderDowngradeConfig();
     }
 
     async function loadLogs() {
@@ -335,6 +373,12 @@
                 await loadAiProviders();
             });
         });
+    }
+
+    function renderAiProviderDowngradeConfig() {
+        const config = state.aiProviderDowngradeConfig || {};
+        document.getElementById("ai-auto-downgrade-enabled").checked = Boolean(config.autoDowngradeEnabled);
+        document.getElementById("ai-auto-downgrade-timeout-threshold").value = config.autoDowngradeTimeoutThreshold || 3;
     }
 
     function bindAiDragSorting(body) {

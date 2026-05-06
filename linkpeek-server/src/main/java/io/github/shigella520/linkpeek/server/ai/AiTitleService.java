@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.net.URI;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -35,17 +36,20 @@ public class AiTitleService {
     private final AiProviderMapper aiProviderMapper;
     private final AiTitleClient aiTitleClient;
     private final AiTitleConfigService aiTitleConfigService;
+    private final AiProviderDowngradeService aiProviderDowngradeService;
 
     public AiTitleService(
             AdminPromptMapper adminPromptMapper,
             AiProviderMapper aiProviderMapper,
             AiTitleClient aiTitleClient,
-            AiTitleConfigService aiTitleConfigService
+            AiTitleConfigService aiTitleConfigService,
+            AiProviderDowngradeService aiProviderDowngradeService
     ) {
         this.adminPromptMapper = adminPromptMapper;
         this.aiProviderMapper = aiProviderMapper;
         this.aiTitleClient = aiTitleClient;
         this.aiTitleConfigService = aiTitleConfigService;
+        this.aiProviderDowngradeService = aiProviderDowngradeService;
     }
 
     public Optional<StylePrompt> resolveStylePrompt(String style) {
@@ -94,6 +98,7 @@ public class AiTitleService {
                 Optional<String> generated = aiTitleClient.generateTitle(provider, prompt)
                         .map(this::cleanTitle)
                         .filter(StringUtils::hasText);
+                recordAiProviderSuccess(provider);
                 if (generated.isPresent()) {
                     return Optional.of(withTitle(metadata, generated.get()));
                 }
@@ -109,6 +114,9 @@ public class AiTitleService {
                         provider.getBaseUrl(),
                         exception.getMessage()
                 );
+                if (exception instanceof HttpTimeoutException) {
+                    recordAiProviderTimeout(provider, exception);
+                }
             }
         }
         return Optional.empty();
@@ -207,6 +215,18 @@ public class AiTitleService {
 
     private String titleFormatPrompt() {
         return aiTitleConfigService == null ? DEFAULT_TITLE_FORMAT_PROMPT : aiTitleConfigService.titleFormatPrompt();
+    }
+
+    private void recordAiProviderSuccess(AiProviderRecord provider) {
+        if (aiProviderDowngradeService != null) {
+            aiProviderDowngradeService.recordSuccess(provider);
+        }
+    }
+
+    private void recordAiProviderTimeout(AiProviderRecord provider, Throwable exception) {
+        if (aiProviderDowngradeService != null) {
+            aiProviderDowngradeService.recordTimeout(provider, exception);
+        }
     }
 
     public record StylePrompt(String style, String prompt, String titleFormatPrompt, String promptHash) {

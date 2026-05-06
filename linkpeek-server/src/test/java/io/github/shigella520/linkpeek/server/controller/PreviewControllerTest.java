@@ -620,6 +620,9 @@ class PreviewControllerTest {
         mockMvc.perform(get("/api/admin/ai-title-config"))
                 .andExpect(status().isUnauthorized());
 
+        mockMvc.perform(get("/api/admin/ai-provider-downgrade-config"))
+                .andExpect(status().isUnauthorized());
+
         org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM stats_event", Integer.class));
         org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM stats_link", Integer.class));
     }
@@ -693,6 +696,21 @@ class PreviewControllerTest {
                         .content("{\"titleFormatPrompt\":\"以此为标准，生成一段大于15中文字符，小于30个中文字符，客观，辩证的标题。\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.titleFormatPrompt").value("以此为标准，生成一段大于15中文字符，小于30个中文字符，客观，辩证的标题。"));
+
+        mockMvc.perform(get("/api/admin/ai-provider-downgrade-config")
+                        .cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.autoDowngradeEnabled").value(false))
+                .andExpect(jsonPath("$.autoDowngradeTimeoutThreshold").value(3))
+                .andExpect(jsonPath("$.defaultAutoDowngradeTimeoutThreshold").value(3));
+
+        mockMvc.perform(put("/api/admin/ai-provider-downgrade-config")
+                        .cookie(cookie)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"autoDowngradeEnabled\":true,\"autoDowngradeTimeoutThreshold\":2}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.autoDowngradeEnabled").value(true))
+                .andExpect(jsonPath("$.autoDowngradeTimeoutThreshold").value(2));
 
         mockMvc.perform(put("/api/admin/provider-config/linuxdo")
                         .cookie(cookie)

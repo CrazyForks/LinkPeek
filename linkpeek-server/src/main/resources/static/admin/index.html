@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LinkPeek Admin</title>
     <link rel="icon" href="/favicon.ico">
-    <link rel="stylesheet" href="/admin/styles.css?v=20260506-ai-provider">
+    <link rel="stylesheet" href="/admin/styles.css?v=20260506-ai-downgrade">
 </head>
 <body>
 <header class="topbar">
@@ -81,6 +81,19 @@
                     <button type="button" id="ai-new-button">新建 AI Provider</button>
                 </div>
                 <p id="ai-feedback" class="feedback" role="status" aria-live="polite"></p>
+                <form id="ai-downgrade-config-form" class="inline-config-form">
+                    <label class="checkbox-row">
+                        <input id="ai-auto-downgrade-enabled" type="checkbox">
+                        <span>自动降级</span>
+                    </label>
+                    <label>
+                        <span>自动降级超时次数</span>
+                        <input id="ai-auto-downgrade-timeout-threshold" type="number" min="1" max="100" value="3" required>
+                    </label>
+                    <button type="submit">保存自动降级</button>
+                </form>
+                <p class="field-hint">全局策略：Provider 超时达到阈值后自动移动到列表最后。</p>
+                <p id="ai-downgrade-config-feedback" class="feedback" role="status" aria-live="polite"></p>
                 <div class="table-shell">
                     <table>
                         <thead>
@@ -273,6 +286,6 @@
     </section>
 </div>
 
-<script src="/admin/app.js?v=20260506-ai-provider"></script>
+<script src="/admin/app.js?v=20260506-ai-downgrade"></script>
 </body>
 </html>

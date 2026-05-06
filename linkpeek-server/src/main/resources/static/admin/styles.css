@@ -295,6 +295,14 @@ textarea:focus {
     margin-top: 18px;
 }
 
+.inline-config-form {
+    display: grid;
+    grid-template-columns: auto minmax(160px, 220px) auto;
+    align-items: end;
+    gap: 12px;
+    margin-top: 14px;
+}
+
 .prompt-subsection {
     min-width: 0;
     margin-top: 22px;
@@ -592,7 +600,8 @@ td button {
 
     .grid-form,
     .provider-grid,
-    .log-controls {
+    .log-controls,
+    .inline-config-form {
         grid-template-columns: 1fr;
     }
 }

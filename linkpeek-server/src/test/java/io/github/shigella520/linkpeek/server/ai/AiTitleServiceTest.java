@@ -12,11 +12,15 @@ import io.github.shigella520.linkpeek.server.admin.service.AiTitleConfigService;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.net.http.HttpTimeoutException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -28,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AiTitleServiceTest {
     @Test
     void buildPromptSeparatesTitleFormatStyleAndRawContent() {
-        AiTitleService service = new AiTitleService(null, new FakeAiProviderMapper(List.of()), new FakeAiTitleClient(), null);
+        AiTitleService service = new AiTitleService(null, new FakeAiProviderMapper(List.of()), new FakeAiTitleClient(), null, null);
 
         AiTitlePrompt prompt = service.buildPrompt("UC 风格", " 原文内容 ");
 
@@ -41,7 +45,7 @@ class AiTitleServiceTest {
 
     @Test
     void buildPromptKeepsStylePromptAndRawContentSeparate() {
-        AiTitleService service = new AiTitleService(null, new FakeAiProviderMapper(List.of()), new FakeAiTitleClient(), null);
+        AiTitleService service = new AiTitleService(null, new FakeAiProviderMapper(List.of()), new FakeAiTitleClient(), null, null);
 
         AiTitlePrompt prompt = service.buildPrompt("请参考原文语气", "帖子正文", "标题格式");
 
@@ -52,7 +56,7 @@ class AiTitleServiceTest {
 
     @Test
     void buildPromptUsesConfiguredTitleFormatPrompt() {
-        AiTitleService service = new AiTitleService(null, new FakeAiProviderMapper(List.of()), new FakeAiTitleClient(), null);
+        AiTitleService service = new AiTitleService(null, new FakeAiProviderMapper(List.of()), new FakeAiTitleClient(), null, null);
 
         AiTitlePrompt prompt = service.buildPrompt("UC 风格", "原文内容", "只输出 15 到 30 个中文字符");
 
@@ -63,7 +67,7 @@ class AiTitleServiceTest {
 
     @Test
     void buildPromptCanSkipTitleFormatPromptWhenConfiguredBlank() {
-        AiTitleService service = new AiTitleService(null, new FakeAiProviderMapper(List.of()), new FakeAiTitleClient(), null);
+        AiTitleService service = new AiTitleService(null, new FakeAiProviderMapper(List.of()), new FakeAiTitleClient(), null, null);
 
         AiTitlePrompt prompt = service.buildPrompt("UC 风格", "原文内容", " ");
 
@@ -80,13 +84,15 @@ class AiTitleServiceTest {
                 new FakeAdminPromptMapper(promptRecord),
                 new FakeAiProviderMapper(List.of()),
                 new FakeAiTitleClient(),
-                configService(null)
+                configService(null),
+                null
         );
         AiTitleService customService = new AiTitleService(
                 new FakeAdminPromptMapper(promptRecord),
                 new FakeAiProviderMapper(List.of()),
                 new FakeAiTitleClient(),
-                configService("自定义输出要求")
+                configService("自定义输出要求"),
+                null
         );
 
         AiTitleService.StylePrompt defaultPrompt = defaultService.resolveStylePrompt("fun").orElseThrow();
@@ -99,7 +105,7 @@ class AiTitleServiceTest {
 
     @Test
     void cleanTitleKeepsOnlyOnePlainTitleLine() {
-        AiTitleService service = new AiTitleService(null, new FakeAiProviderMapper(List.of()), new FakeAiTitleClient(), null);
+        AiTitleService service = new AiTitleService(null, new FakeAiProviderMapper(List.of()), new FakeAiTitleClient(), null, null);
 
         assertEquals("一个更有点击欲的标题", service.cleanTitle("""
                 ```markdown
@@ -116,7 +122,7 @@ class AiTitleServiceTest {
         FakeAiTitleClient client = new FakeAiTitleClient();
         client.failProviderIds.add(1L);
         client.title = "\"最终标题\"";
-        AiTitleService service = new AiTitleService(null, new FakeAiProviderMapper(List.of(first, second)), client, null);
+        AiTitleService service = new AiTitleService(null, new FakeAiProviderMapper(List.of(first, second)), client, null, null);
 
         Optional<PreviewMetadata> result = service.generateStyledMetadata(
                 generatedTextMetadata(),
@@ -132,9 +138,37 @@ class AiTitleServiceTest {
     }
 
     @Test
+    void generateStyledMetadataMovesTimedOutProviderToBottomAfterThreshold() {
+        AiProviderRecord first = provider(1L, 100);
+        AiProviderRecord second = provider(2L, 200);
+        FakeAiProviderMapper mapper = new FakeAiProviderMapper(List.of(first, second));
+        FakeAiTitleClient client = new FakeAiTitleClient();
+        client.timeoutProviderIds.add(1L);
+        AiProviderDowngradeService downgradeService = new AiProviderDowngradeService(
+                FakeProviderConfigMapper.aiProviderDowngradeConfig(true, 2),
+                mapper,
+                Clock.fixed(Instant.ofEpochMilli(1234L), ZoneOffset.UTC)
+        );
+        AiTitleService service = new AiTitleService(null, mapper, client, null, downgradeService);
+
+        service.generateStyledMetadata(
+                generatedTextMetadata(),
+                new AiTitleService.StylePrompt("fun", "UC 风格", AiTitleService.DEFAULT_TITLE_FORMAT_PROMPT, "hash")
+        );
+        service.generateStyledMetadata(
+                generatedTextMetadata(),
+                new AiTitleService.StylePrompt("fun", "UC 风格", AiTitleService.DEFAULT_TITLE_FORMAT_PROMPT, "hash")
+        );
+
+        assertIterableEquals(List.of(1L, 2L, 1L, 2L), client.requestedProviderIds);
+        assertEquals(200, first.getSortOrder());
+        assertEquals(100, second.getSortOrder());
+    }
+
+    @Test
     void generateStyledMetadataSkipsRealImageCards() {
         FakeAiTitleClient client = new FakeAiTitleClient();
-        AiTitleService service = new AiTitleService(null, new FakeAiProviderMapper(List.of(provider(1L, 1))), client, null);
+        AiTitleService service = new AiTitleService(null, new FakeAiProviderMapper(List.of(provider(1L, 1))), client, null, null);
 
         Optional<PreviewMetadata> result = service.generateStyledMetadata(
                 new PreviewMetadata(
@@ -229,10 +263,38 @@ class AiTitleServiceTest {
     }
 
     private static final class FakeProviderConfigMapper implements ProviderConfigMapper {
-        private final String configuredOutputConstraint;
+        private final Map<String, ProviderConfigRecord> configs;
 
         private FakeProviderConfigMapper(String configuredOutputConstraint) {
-            this.configuredOutputConstraint = configuredOutputConstraint;
+            this(configuredOutputConstraint == null
+                    ? Map.of()
+                    : Map.of(key(AiTitleConfigService.PROVIDER_AI_TITLE, AiTitleConfigService.TITLE_FORMAT_PROMPT_KEY), configuredOutputConstraint));
+        }
+
+        private FakeProviderConfigMapper(Map<String, String> values) {
+            this.configs = new HashMap<>();
+            values.forEach((key, value) -> {
+                String[] parts = key.split("\n", 2);
+                ProviderConfigRecord record = new ProviderConfigRecord();
+                record.setProviderId(parts[0]);
+                record.setConfigKey(parts[1]);
+                record.setConfigValue(value);
+                record.setUpdatedAt(1234L);
+                configs.put(key, record);
+            });
+        }
+
+        private static FakeProviderConfigMapper aiProviderDowngradeConfig(boolean enabled, int threshold) {
+            return new FakeProviderConfigMapper(Map.of(
+                    key(AiProviderDowngradeService.PROVIDER_AI_PROVIDER, AiProviderDowngradeService.AUTO_DOWNGRADE_ENABLED_KEY),
+                    Boolean.toString(enabled),
+                    key(AiProviderDowngradeService.PROVIDER_AI_PROVIDER, AiProviderDowngradeService.AUTO_DOWNGRADE_TIMEOUT_THRESHOLD_KEY),
+                    Integer.toString(threshold)
+            ));
+        }
+
+        private static String key(String providerId, String configKey) {
+            return providerId + "\n" + configKey;
         }
 
         @Override
@@ -247,20 +309,12 @@ class AiTitleServiceTest {
 
         @Override
         public ProviderConfigRecord selectConfig(String providerId, String configKey) {
-            if (configuredOutputConstraint == null) {
-                return null;
-            }
-            ProviderConfigRecord record = new ProviderConfigRecord();
-            record.setProviderId(providerId);
-            record.setConfigKey(configKey);
-            record.setConfigValue(configuredOutputConstraint);
-            record.setUpdatedAt(1234L);
-            return record;
+            return configs.get(key(providerId, configKey));
         }
 
         @Override
         public void upsertConfig(ProviderConfigRecord config) {
-            throw new UnsupportedOperationException();
+            configs.put(key(config.getProviderId(), config.getConfigKey()), config);
         }
     }
 
@@ -273,12 +327,14 @@ class AiTitleServiceTest {
 
         @Override
         public List<AiProviderRecord> selectAllProviders() {
-            return providers;
+            return providers.stream()
+                    .sorted(Comparator.comparingInt(AiProviderRecord::getSortOrder).thenComparing(AiProviderRecord::getId))
+                    .toList();
         }
 
         @Override
         public List<AiProviderRecord> selectEnabledProviders() {
-            return providers;
+            return selectAllProviders();
         }
 
         @Override
@@ -306,7 +362,13 @@ class AiTitleServiceTest {
 
         @Override
         public int updateProviderSortOrder(long id, int sortOrder, long updatedAt) {
-            throw new UnsupportedOperationException();
+            AiProviderRecord provider = selectProvider(id);
+            if (provider == null) {
+                return 0;
+            }
+            provider.setSortOrder(sortOrder);
+            provider.setUpdatedAt(updatedAt);
+            return 1;
         }
 
         @Override
@@ -317,6 +379,7 @@ class AiTitleServiceTest {
 
     private static final class FakeAiTitleClient extends AiTitleClient {
         private final List<Long> failProviderIds = new ArrayList<>();
+        private final List<Long> timeoutProviderIds = new ArrayList<>();
         private final List<Long> requestedProviderIds = new ArrayList<>();
         private final List<AiTitlePrompt> requestedPrompts = new ArrayList<>();
         private String title = "AI 标题";
@@ -329,6 +392,9 @@ class AiTitleServiceTest {
         public Optional<String> generateTitle(AiProviderRecord provider, AiTitlePrompt prompt) throws IOException {
             requestedProviderIds.add(provider.getId());
             requestedPrompts.add(prompt);
+            if (timeoutProviderIds.contains(provider.getId())) {
+                throw new HttpTimeoutException("request timed out");
+            }
             if (failProviderIds.contains(provider.getId())) {
                 throw new IOException("provider failed");
             }
