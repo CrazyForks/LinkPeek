@@ -300,6 +300,16 @@ class AiTitleServiceTest {
         }
 
         @Override
+        public int updateProviderEnabled(long id, boolean enabled, long updatedAt) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public int updateProviderSortOrder(long id, int sortOrder, long updatedAt) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
         public int deleteProvider(long id) {
             throw new UnsupportedOperationException();
         }

@@ -33,9 +33,11 @@ import org.springframework.web.server.ResponseStatusException;
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 @RestController
@@ -48,6 +50,9 @@ public class AdminController {
             "AI Provider 连通性测试",
             "LinkPeek AI Provider 测试成功。"
     );
+    private static final int AI_PROVIDER_SORT_STEP = 100;
+    private static final int MIN_AI_REQUEST_TIMEOUT_SECONDS = 1;
+    private static final int MAX_AI_REQUEST_TIMEOUT_SECONDS = 600;
 
     private final AdminAuthService adminAuthService;
     private final AdminPromptMapper adminPromptMapper;
@@ -206,7 +211,7 @@ public class AdminController {
             @RequestBody AiProviderRequest providerRequest
     ) {
         adminAuthService.requireAuthenticated(request);
-        AiProviderRecord record = normalizeAiProvider(null, providerRequest);
+        AiProviderRecord record = normalizeAiProvider(null, providerRequest, null);
         aiProviderMapper.insertProvider(record);
         return aiProviderMapper.selectProvider(record.getId());
     }
@@ -219,12 +224,59 @@ public class AdminController {
             @RequestBody AiProviderRequest providerRequest
     ) {
         adminAuthService.requireAuthenticated(request);
-        if (aiProviderMapper.selectProvider(id) == null) {
+        AiProviderRecord existing = aiProviderMapper.selectProvider(id);
+        if (existing == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "AI provider was not found.");
         }
-        AiProviderRecord record = normalizeAiProvider(id, providerRequest);
+        AiProviderRecord record = normalizeAiProvider(id, providerRequest, existing);
         aiProviderMapper.updateProvider(record);
         return aiProviderMapper.selectProvider(id);
+    }
+
+    @PutMapping("/ai-providers/{id}/enabled")
+    public AiProviderRecord updateAiProviderEnabled(
+            HttpServletRequest request,
+            @PathVariable long id,
+            @RequestBody AiProviderEnabledRequest enabledRequest
+    ) {
+        adminAuthService.requireAuthenticated(request);
+        if (enabledRequest == null || enabledRequest.enabled() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enabled value is required.");
+        }
+        int updated = aiProviderMapper.updateProviderEnabled(id, enabledRequest.enabled(), now());
+        if (updated == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "AI provider was not found.");
+        }
+        return aiProviderMapper.selectProvider(id);
+    }
+
+    @PutMapping("/ai-providers/reorder")
+    @Transactional
+    public List<AiProviderRecord> reorderAiProviders(
+            HttpServletRequest request,
+            @RequestBody AiProviderReorderRequest reorderRequest
+    ) {
+        adminAuthService.requireAuthenticated(request);
+        if (reorderRequest == null || reorderRequest.ids() == null || reorderRequest.ids().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "AI provider order is required.");
+        }
+
+        List<AiProviderRecord> providers = aiProviderMapper.selectAllProviders();
+        Set<Long> existingIds = new HashSet<>(providers.stream()
+                .map(AiProviderRecord::getId)
+                .toList());
+        Set<Long> requestedIds = new HashSet<>(reorderRequest.ids());
+        if (reorderRequest.ids().size() != requestedIds.size() || !existingIds.equals(requestedIds)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "AI provider order payload is stale.");
+        }
+
+        long updatedAt = now();
+        int sortOrder = AI_PROVIDER_SORT_STEP;
+        for (Long providerId : reorderRequest.ids()) {
+            aiProviderMapper.updateProviderSortOrder(providerId, sortOrder, updatedAt);
+            sortOrder += AI_PROVIDER_SORT_STEP;
+        }
+        return aiProviderMapper.selectAllProviders();
     }
 
     @DeleteMapping("/ai-providers/{id}")
@@ -259,7 +311,7 @@ public class AdminController {
         }
     }
 
-    private AiProviderRecord normalizeAiProvider(Long id, AiProviderRequest request) {
+    private AiProviderRecord normalizeAiProvider(Long id, AiProviderRequest request, AiProviderRecord existing) {
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "AI provider payload is required.");
         }
@@ -278,15 +330,40 @@ public class AdminController {
         AiProviderRecord record = new AiProviderRecord();
         record.setId(id);
         record.setName(name);
-        record.setEnabled(request.enabled());
-        record.setSortOrder(request.sortOrder());
+        record.setEnabled(request.enabled() == null ? existing == null || existing.isEnabled() : request.enabled());
+        record.setSortOrder(request.sortOrder() == null ? defaultSortOrder(existing) : request.sortOrder());
         record.setBaseUrl(baseUrl);
         record.setApiKind(apiKind.name());
         record.setModel(model);
         record.setEffort(StringUtils.hasText(request.effort()) ? request.effort().strip() : null);
+        record.setRequestTimeoutSeconds(normalizeAiRequestTimeoutSeconds(request.requestTimeoutSeconds(), existing));
         record.setApiKey(request.apiKey() == null ? "" : request.apiKey().strip());
         record.setUpdatedAt(now());
         return record;
+    }
+
+    private int defaultSortOrder(AiProviderRecord existing) {
+        if (existing != null) {
+            return existing.getSortOrder();
+        }
+        return aiProviderMapper.selectAllProviders()
+                .stream()
+                .mapToInt(AiProviderRecord::getSortOrder)
+                .max()
+                .orElse(0) + AI_PROVIDER_SORT_STEP;
+    }
+
+    private int normalizeAiRequestTimeoutSeconds(Integer requestTimeoutSeconds, AiProviderRecord existing) {
+        int timeoutSeconds = requestTimeoutSeconds == null
+                ? (existing == null ? AiTitleClient.DEFAULT_REQUEST_TIMEOUT_SECONDS : existing.getRequestTimeoutSeconds())
+                : requestTimeoutSeconds;
+        if (timeoutSeconds < MIN_AI_REQUEST_TIMEOUT_SECONDS || timeoutSeconds > MAX_AI_REQUEST_TIMEOUT_SECONDS) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "AI request timeout must be between 1 and 600 seconds."
+            );
+        }
+        return timeoutSeconds;
     }
 
     private String normalizeStyle(String style) {
@@ -331,14 +408,21 @@ public class AdminController {
 
     public record AiProviderRequest(
             String name,
-            boolean enabled,
-            int sortOrder,
+            Boolean enabled,
+            Integer sortOrder,
             String baseUrl,
             String apiKind,
             String model,
             String effort,
+            Integer requestTimeoutSeconds,
             String apiKey
     ) {
+    }
+
+    public record AiProviderEnabledRequest(Boolean enabled) {
+    }
+
+    public record AiProviderReorderRequest(List<Long> ids) {
     }
 
     public record AiProviderTestResponse(

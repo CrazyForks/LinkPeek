@@ -13,6 +13,7 @@
             api_kind,
             model,
             effort,
+            request_timeout_seconds,
             api_key,
             updated_at
         FROM ai_provider
@@ -29,6 +30,7 @@
             api_kind,
             model,
             effort,
+            request_timeout_seconds,
             api_key,
             updated_at
         FROM ai_provider
@@ -46,6 +48,7 @@
             api_kind,
             model,
             effort,
+            request_timeout_seconds,
             api_key,
             updated_at
         FROM ai_provider
@@ -64,6 +67,7 @@
             api_kind,
             model,
             effort,
+            request_timeout_seconds,
             api_key,
             updated_at
         )
@@ -75,6 +79,7 @@
             #{apiKind},
             #{model},
             #{effort},
+            #{requestTimeoutSeconds},
             #{apiKey},
             #{updatedAt}
         )
@@ -90,7 +95,24 @@
             api_kind = #{apiKind},
             model = #{model},
             effort = #{effort},
+            request_timeout_seconds = #{requestTimeoutSeconds},
             api_key = #{apiKey},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateProviderEnabled">
+        UPDATE ai_provider
+        SET
+            enabled = #{enabled},
+            updated_at = #{updatedAt}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateProviderSortOrder">
+        UPDATE ai_provider
+        SET
+            sort_order = #{sortOrder},
             updated_at = #{updatedAt}
         WHERE id = #{id}
     </update>

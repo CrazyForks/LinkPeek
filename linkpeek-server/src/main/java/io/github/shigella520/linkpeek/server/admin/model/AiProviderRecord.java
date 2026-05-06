@@ -9,6 +9,7 @@ public class AiProviderRecord {
     private String apiKind;
     private String model;
     private String effort;
+    private int requestTimeoutSeconds = 45;
     private String apiKey;
     private long updatedAt;
 
@@ -74,6 +75,14 @@ public class AiProviderRecord {
 
     public void setEffort(String effort) {
         this.effort = effort;
+    }
+
+    public int getRequestTimeoutSeconds() {
+        return requestTimeoutSeconds;
+    }
+
+    public void setRequestTimeoutSeconds(int requestTimeoutSeconds) {
+        this.requestTimeoutSeconds = requestTimeoutSeconds;
     }
 
     public String getApiKey() {

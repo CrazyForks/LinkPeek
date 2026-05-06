@@ -41,8 +41,9 @@ class StatisticsConfigurationTest {
             initializeSchema(dataSource);
             initializeSchema(dataSource);
 
-            assertTrue(hasColumn(jdbcTemplate, "ai_requested"));
-            assertTrue(hasColumn(jdbcTemplate, "ai_succeeded"));
+            assertTrue(hasColumn(jdbcTemplate, "stats_event", "ai_requested"));
+            assertTrue(hasColumn(jdbcTemplate, "stats_event", "ai_succeeded"));
+            assertTrue(hasColumn(jdbcTemplate, "ai_provider", "request_timeout_seconds"));
             jdbcTemplate.update("""
                     INSERT INTO stats_event (
                         occurred_at,
@@ -58,6 +59,26 @@ class StatisticsConfigurationTest {
                     1,
                     jdbcTemplate.queryForObject(
                             "SELECT COUNT(*) FROM stats_event WHERE ai_requested = 0 AND ai_succeeded = 0",
+                            Integer.class
+                    )
+            );
+            jdbcTemplate.update("""
+                    INSERT INTO ai_provider (
+                        name,
+                        enabled,
+                        sort_order,
+                        base_url,
+                        api_kind,
+                        model,
+                        api_key,
+                        updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, "OpenAI", 1, 10, "https://api.openai.com/v1", "RESPONSES", "gpt-test", "sk-test", 1L);
+            assertEquals(
+                    1,
+                    jdbcTemplate.queryForObject(
+                            "SELECT COUNT(*) FROM ai_provider WHERE request_timeout_seconds = 45",
                             Integer.class
                     )
             );
@@ -81,8 +102,8 @@ class StatisticsConfigurationTest {
         );
     }
 
-    private boolean hasColumn(JdbcTemplate jdbcTemplate, String columnName) {
-        return jdbcTemplate.queryForList("PRAGMA table_info(stats_event)")
+    private boolean hasColumn(JdbcTemplate jdbcTemplate, String tableName, String columnName) {
+        return jdbcTemplate.queryForList("PRAGMA table_info(" + tableName + ")")
                 .stream()
                 .map(row -> String.valueOf(row.get("name")).toLowerCase(Locale.ROOT))
                 .anyMatch(columnName::equals);

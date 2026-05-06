@@ -129,16 +129,21 @@
         document.getElementById("ai-form").addEventListener("submit", async (event) => {
             event.preventDefault();
             const id = document.getElementById("ai-id").value;
+            const requestTimeoutSeconds = Number(document.getElementById("ai-request-timeout-seconds").value || 0);
             const payload = {
                 name: document.getElementById("ai-name").value.trim(),
-                enabled: document.getElementById("ai-enabled").checked,
-                sortOrder: Number(document.getElementById("ai-sort-order").value || 0),
                 baseUrl: document.getElementById("ai-base-url").value.trim(),
                 apiKind: document.getElementById("ai-api-kind").value,
                 model: document.getElementById("ai-model").value.trim(),
                 effort: document.getElementById("ai-effort").value.trim(),
+                requestTimeoutSeconds,
                 apiKey: document.getElementById("ai-api-key").value.trim()
             };
+            if (!Number.isInteger(requestTimeoutSeconds) || requestTimeoutSeconds < 1 || requestTimeoutSeconds > 600) {
+                setFeedback("ai-modal-feedback", "AI 请求超时必须是 1-600 秒之间的整数。", "is-error");
+                document.getElementById("ai-request-timeout-seconds").focus();
+                return;
+            }
             const baseUrlError = validateAiBaseUrl(payload.baseUrl);
             if (baseUrlError) {
                 setFeedback("ai-modal-feedback", baseUrlError, "is-error");
@@ -282,17 +287,26 @@
     function renderAiProviders() {
         const body = document.getElementById("ai-table");
         if (!state.aiProviders.length) {
-            body.innerHTML = `<tr><td colspan="7" class="muted">暂无 AI Provider</td></tr>`;
+            body.innerHTML = `<tr><td colspan="8" class="muted">暂无 AI Provider</td></tr>`;
             return;
         }
         body.innerHTML = state.aiProviders.map((provider) => `
-            <tr>
+            <tr data-ai-row="${provider.id}">
+                <td class="drag-cell">
+                    <button type="button" class="drag-handle" data-drag-ai="${provider.id}" draggable="true" title="拖拽排序" aria-label="拖拽排序">↕</button>
+                </td>
                 <td>${escapeHtml(provider.name)}</td>
                 <td>${escapeHtml(provider.baseUrl)}</td>
                 <td>${escapeHtml(aiKindLabel(providerApiKind(provider)))}</td>
                 <td>${escapeHtml(provider.model)}</td>
-                <td>${provider.sortOrder}</td>
-                <td>${provider.enabled ? "启用" : "禁用"}</td>
+                <td>${providerRequestTimeoutLabel(provider)}</td>
+                <td>
+                    <label class="switch-row">
+                        <input type="checkbox" data-toggle-ai="${provider.id}" ${provider.enabled ? "checked" : ""}>
+                        <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+                        <span class="switch-text">${provider.enabled ? "启用" : "禁用"}</span>
+                    </label>
+                </td>
                 <td>
                     <div class="row-actions">
                         <button type="button" data-test-ai="${provider.id}" class="secondary test-button">测试</button>
@@ -302,6 +316,10 @@
                 </td>
             </tr>
         `).join("");
+        bindAiDragSorting(body);
+        body.querySelectorAll("[data-toggle-ai]").forEach((input) => {
+            input.addEventListener("change", () => toggleAiProvider(input));
+        });
         body.querySelectorAll("[data-test-ai]").forEach((button) => {
             button.addEventListener("click", () => testAiProvider(button));
         });
@@ -317,6 +335,96 @@
                 await loadAiProviders();
             });
         });
+    }
+
+    function bindAiDragSorting(body) {
+        body.ondragover = (event) => {
+            const draggingRow = body.querySelector("tr.is-dragging");
+            if (!draggingRow) {
+                return;
+            }
+            event.preventDefault();
+            const afterRow = dragAfterRow(body, event.clientY);
+            if (afterRow) {
+                body.insertBefore(draggingRow, afterRow);
+                return;
+            }
+            body.appendChild(draggingRow);
+        };
+        body.ondrop = async (event) => {
+            event.preventDefault();
+            const ids = Array.from(body.querySelectorAll("[data-ai-row]"))
+                    .map((row) => Number(row.dataset.aiRow));
+            await saveAiProviderOrder(ids);
+        };
+        body.querySelectorAll("[data-drag-ai]").forEach((handle) => {
+            handle.addEventListener("dragstart", (event) => {
+                const row = handle.closest("[data-ai-row]");
+                if (!row) {
+                    return;
+                }
+                row.classList.add("is-dragging");
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", handle.dataset.dragAi);
+            });
+            handle.addEventListener("dragend", () => {
+                body.querySelectorAll(".is-dragging").forEach((row) => row.classList.remove("is-dragging"));
+            });
+        });
+    }
+
+    function dragAfterRow(body, y) {
+        return Array.from(body.querySelectorAll("tr[data-ai-row]:not(.is-dragging)"))
+                .reduce((closest, row) => {
+                    const box = row.getBoundingClientRect();
+                    const offset = y - box.top - box.height / 2;
+                    if (offset < 0 && offset > closest.offset) {
+                        return {offset, row};
+                    }
+                    return closest;
+                }, {offset: Number.NEGATIVE_INFINITY, row: null}).row;
+    }
+
+    async function saveAiProviderOrder(ids) {
+        const currentIds = state.aiProviders.map((provider) => Number(provider.id));
+        if (ids.length === currentIds.length && ids.every((id, index) => id === currentIds[index])) {
+            return;
+        }
+        setFeedback("ai-feedback", "正在保存 AI Provider 排序...", "");
+        try {
+            state.aiProviders = await fetchJson("/api/admin/ai-providers/reorder", {
+                method: "PUT",
+                body: JSON.stringify({ids})
+            });
+            renderAiProviders();
+            setFeedback("ai-feedback", "AI Provider 排序已保存。", "is-success");
+        } catch (error) {
+            await loadAiProviders();
+            setFeedback("ai-feedback", error.message, "is-error");
+        }
+    }
+
+    async function toggleAiProvider(input) {
+        const providerId = input.dataset.toggleAi;
+        const enabled = input.checked;
+        input.disabled = true;
+        setFeedback("ai-feedback", "正在更新 AI Provider 状态...", "");
+        try {
+            const updated = await fetchJson(`/api/admin/ai-providers/${encodeURIComponent(providerId)}/enabled`, {
+                method: "PUT",
+                body: JSON.stringify({enabled})
+            });
+            state.aiProviders = state.aiProviders.map((provider) => {
+                return Number(provider.id) === Number(updated.id) ? updated : provider;
+            });
+            renderAiProviders();
+            setFeedback("ai-feedback", `${updated.name || "AI Provider"} 已${updated.enabled ? "启用" : "禁用"}。`, "is-success");
+        } catch (error) {
+            input.checked = !enabled;
+            setFeedback("ai-feedback", error.message, "is-error");
+        } finally {
+            input.disabled = false;
+        }
     }
 
     async function testAiProvider(button) {
@@ -434,8 +542,7 @@
         openModal("ai-modal");
         document.getElementById("ai-id").value = provider.id;
         document.getElementById("ai-name").value = provider.name || "";
-        document.getElementById("ai-enabled").checked = Boolean(provider.enabled);
-        document.getElementById("ai-sort-order").value = provider.sortOrder || 0;
+        document.getElementById("ai-request-timeout-seconds").value = providerRequestTimeoutSeconds(provider);
         document.getElementById("ai-base-url").value = provider.baseUrl || "";
         document.getElementById("ai-api-kind").value = providerApiKind(provider);
         document.getElementById("ai-model").value = provider.model || "";
@@ -456,9 +563,8 @@
     function resetAiForm() {
         document.getElementById("ai-form").reset();
         document.getElementById("ai-id").value = "";
-        document.getElementById("ai-sort-order").value = "100";
+        document.getElementById("ai-request-timeout-seconds").value = "45";
         document.getElementById("ai-api-kind").value = "CHAT_COMPLETIONS";
-        document.getElementById("ai-enabled").checked = true;
     }
 
     function openModal(id) {
@@ -571,6 +677,15 @@
 
     function providerApiKind(provider) {
         return provider.apiKind || "CHAT_COMPLETIONS";
+    }
+
+    function providerRequestTimeoutSeconds(provider) {
+        const value = Number(provider.requestTimeoutSeconds || 45);
+        return Number.isFinite(value) && value > 0 ? value : 45;
+    }
+
+    function providerRequestTimeoutLabel(provider) {
+        return `${providerRequestTimeoutSeconds(provider)}s`;
     }
 
     function aiKindLabel(value) {

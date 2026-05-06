@@ -18,5 +18,17 @@ public interface AiProviderMapper {
 
     int updateProvider(AiProviderRecord provider);
 
+    int updateProviderEnabled(
+            @Param("id") long id,
+            @Param("enabled") boolean enabled,
+            @Param("updatedAt") long updatedAt
+    );
+
+    int updateProviderSortOrder(
+            @Param("id") long id,
+            @Param("sortOrder") int sortOrder,
+            @Param("updatedAt") long updatedAt
+    );
+
     int deleteProvider(@Param("id") long id);
 }

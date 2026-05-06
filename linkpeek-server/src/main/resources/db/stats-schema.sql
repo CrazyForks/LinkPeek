@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS ai_provider (
     api_kind TEXT NOT NULL DEFAULT 'CHAT_COMPLETIONS',
     model TEXT NOT NULL,
     effort TEXT,
+    request_timeout_seconds INTEGER NOT NULL DEFAULT 45,
     api_key TEXT NOT NULL,
     updated_at INTEGER NOT NULL
 );

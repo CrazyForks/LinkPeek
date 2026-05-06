@@ -723,21 +723,64 @@ class PreviewControllerTest {
                         .cookie(cookie)
                         .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
                         .content("""
-                                {"name":"OpenAI","enabled":true,"sortOrder":10,"baseUrl":"https://api.openai.com/v1","apiKind":"RESPONSES","model":"gpt-test","effort":"low","apiKey":"plain-key"}
+                                {"name":"OpenAI","enabled":true,"sortOrder":10,"baseUrl":"https://api.openai.com/v1","apiKind":"RESPONSES","model":"gpt-test","effort":"low","requestTimeoutSeconds":90,"apiKey":"plain-key"}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").exists())
                 .andExpect(jsonPath("$.baseUrl").value("https://api.openai.com/v1"))
                 .andExpect(jsonPath("$.apiKind").value("RESPONSES"))
+                .andExpect(jsonPath("$.requestTimeoutSeconds").value(90))
                 .andExpect(jsonPath("$.apiKey").value("plain-key"));
 
         mockMvc.perform(get("/api/admin/ai-providers")
                         .cookie(cookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].apiKind").value("RESPONSES"))
+                .andExpect(jsonPath("$[0].requestTimeoutSeconds").value(90))
                 .andExpect(jsonPath("$[0].apiKey").value("plain-key"));
 
         Long providerId = jdbcTemplate.queryForObject("SELECT id FROM ai_provider WHERE name = ?", Long.class, "OpenAI");
+        mockMvc.perform(put("/api/admin/ai-providers/{id}", providerId)
+                        .cookie(cookie)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"OpenAI Updated","baseUrl":"https://api.openai.com/v1","apiKind":"RESPONSES","model":"gpt-test-updated","effort":"medium","requestTimeoutSeconds":120,"apiKey":"updated-key"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("OpenAI Updated"))
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.sortOrder").value(10))
+                .andExpect(jsonPath("$.requestTimeoutSeconds").value(120));
+
+        mockMvc.perform(put("/api/admin/ai-providers/{id}/enabled", providerId)
+                        .cookie(cookie)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"enabled\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(false))
+                .andExpect(jsonPath("$.requestTimeoutSeconds").value(120));
+
+        mockMvc.perform(post("/api/admin/ai-providers")
+                        .cookie(cookie)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Backup","baseUrl":"https://backup.example.com/v1","apiKind":"CHAT_COMPLETIONS","model":"gpt-backup","effort":"","requestTimeoutSeconds":30,"apiKey":""}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.enabled").value(true))
+                .andExpect(jsonPath("$.requestTimeoutSeconds").value(30));
+
+        Long backupProviderId = jdbcTemplate.queryForObject("SELECT id FROM ai_provider WHERE name = ?", Long.class, "Backup");
+        mockMvc.perform(put("/api/admin/ai-providers/reorder")
+                        .cookie(cookie)
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"ids\":[" + backupProviderId + "," + providerId + "]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(backupProviderId))
+                .andExpect(jsonPath("$[0].sortOrder").value(100))
+                .andExpect(jsonPath("$[1].id").value(providerId))
+                .andExpect(jsonPath("$[1].sortOrder").value(200));
+
         mockMvc.perform(post("/api/admin/ai-providers/{id}/test", providerId)
                         .cookie(cookie))
                 .andExpect(status().isOk())

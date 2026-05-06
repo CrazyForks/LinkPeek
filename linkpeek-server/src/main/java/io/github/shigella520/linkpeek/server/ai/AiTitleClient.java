@@ -26,7 +26,8 @@ import java.util.Optional;
 public class AiTitleClient {
     private static final Logger log = LoggerFactory.getLogger(AiTitleClient.class);
 
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(45);
+    public static final int DEFAULT_REQUEST_TIMEOUT_SECONDS = 45;
+    private static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(DEFAULT_REQUEST_TIMEOUT_SECONDS);
     private static final int MAX_BODY_LOG_CHARS = 2_000;
 
     private final HttpClient httpClient;
@@ -44,18 +45,20 @@ public class AiTitleClient {
             case RESPONSES -> responsesBody(provider, prompt);
             case CHAT_COMPLETIONS -> chatCompletionsBody(provider, prompt);
         };
+        Duration requestTimeout = requestTimeout(provider);
         log.info(
-                "ai_title_request_start providerId={} apiKind={} model={} baseUrl={} requestBytes={} requestBody={}",
+                "ai_title_request_start providerId={} apiKind={} model={} baseUrl={} timeoutMs={} requestBytes={} requestBody={}",
                 provider.getId(),
                 apiKind,
                 provider.getModel(),
                 endpointUri,
+                requestTimeout.toMillis(),
                 body.length,
                 bodySnippet(body)
         );
 
         HttpRequest.Builder builder = HttpRequest.newBuilder(endpointUri)
-                .timeout(REQUEST_TIMEOUT)
+                .timeout(requestTimeout)
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body));
@@ -139,6 +142,11 @@ public class AiTitleClient {
         message.put("role", role);
         message.put("content", content);
         return message;
+    }
+
+    private Duration requestTimeout(AiProviderRecord provider) {
+        int timeoutSeconds = provider.getRequestTimeoutSeconds();
+        return timeoutSeconds > 0 ? Duration.ofSeconds(timeoutSeconds) : DEFAULT_REQUEST_TIMEOUT;
     }
 
     private Optional<String> extractResponsesText(JsonNode payload) {

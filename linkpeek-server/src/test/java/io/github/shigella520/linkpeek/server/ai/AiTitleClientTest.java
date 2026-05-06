@@ -63,6 +63,7 @@ class AiTitleClientTest {
         assertEquals("user", body.path("messages").get(2).path("role").asText());
         assertEquals("Raw Content\n原文内容", body.path("messages").get(2).path("content").asText());
         assertEquals("low", body.path("reasoning_effort").asText());
+        assertEquals(Optional.of(Duration.ofSeconds(45)), httpClient.lastRequestTimeout);
     }
 
     @Test
@@ -88,6 +89,21 @@ class AiTitleClientTest {
         assertEquals("user", body.path("input").get(1).path("role").asText());
         assertEquals("Raw Content\n原文内容", body.path("input").get(1).path("content").asText());
         assertEquals("medium", body.path("reasoning").path("effort").asText());
+        assertEquals(Optional.of(Duration.ofSeconds(45)), httpClient.lastRequestTimeout);
+    }
+
+    @Test
+    void usesProviderRequestTimeoutWhenPresent() throws Exception {
+        CapturingHttpClient httpClient = new CapturingHttpClient(200, """
+                {"choices":[{"message":{"content":"AI 生成标题"}}]}
+                """);
+        AiTitleClient client = new AiTitleClient(httpClient, objectMapper);
+        AiProviderRecord provider = provider("https://api.example.com/v1", "CHAT_COMPLETIONS", "gpt-test", "", "sk-test");
+        provider.setRequestTimeoutSeconds(12);
+
+        client.generateTitle(provider, prompt());
+
+        assertEquals(Optional.of(Duration.ofSeconds(12)), httpClient.lastRequestTimeout);
     }
 
     @Test
@@ -148,6 +164,7 @@ class AiTitleClientTest {
         private final int statusCode;
         private final byte[] responseBody;
         private URI lastRequestUri;
+        private Optional<Duration> lastRequestTimeout = Optional.empty();
         private String lastRequestBody = "";
         private String lastAuthorization = "";
 
@@ -211,6 +228,7 @@ class AiTitleClientTest {
         @SuppressWarnings("unchecked")
         public <T> HttpResponse<T> send(HttpRequest request, HttpResponse.BodyHandler<T> responseBodyHandler) throws IOException {
             lastRequestUri = request.uri();
+            lastRequestTimeout = request.timeout();
             lastRequestBody = BodyCollector.collect(request);
             lastAuthorization = request.headers().firstValue("Authorization").orElse("");
             return (HttpResponse<T>) new StubHttpResponse(request.uri(), statusCode, responseBody);
