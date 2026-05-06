@@ -711,6 +711,10 @@ body::before {
     line-height: 1.45;
 }
 
+.hero-metric span {
+    max-width: none;
+}
+
 .glass-card-tint-blue {
     background: var(--glass-blue);
     border-color: rgba(220, 233, 255, 0.88);
@@ -734,16 +738,18 @@ body::before {
 .hero-metric-wide {
     grid-column: span 2;
     width: 88%;
-    min-height: 106px;
+    min-height: 132px;
     justify-self: center;
     transform: translateX(-4px);
 }
 
 .glass-stack .hero-metric:nth-of-type(2) {
+    min-height: 132px;
     transform: translate(-18px, -8px);
 }
 
 .glass-stack .hero-metric:nth-of-type(3) {
+    min-height: 132px;
     transform: translate(8px, -18px);
 }
 
