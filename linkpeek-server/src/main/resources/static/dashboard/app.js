@@ -691,7 +691,7 @@
     function renderTopLinks(topLinks) {
         const tbody = document.getElementById("top-links-body");
         if (!topLinks.length) {
-            tbody.innerHTML = '<tr><td colspan="6" class="empty-row">No link activity in this range</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="empty-row">No link activity in this range</td></tr>';
             return;
         }
 
@@ -708,7 +708,6 @@
                         </div>
                     </td>
                     <td>${safeProvider}</td>
-                    <td>${numberFormatter.format(link.createdCount)}</td>
                     <td>${numberFormatter.format(link.openedCount)}</td>
                     <td>${dateTimeFormatter.format(new Date(link.firstSeenAt))}</td>
                     <td>${dateTimeFormatter.format(new Date(link.lastSeenAt))}</td>

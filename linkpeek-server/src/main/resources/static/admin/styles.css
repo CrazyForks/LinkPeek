@@ -285,6 +285,7 @@ textarea:focus {
 .form-actions {
     display: flex;
     flex-wrap: wrap;
+    justify-content: flex-end;
     gap: 10px;
 }
 
@@ -297,10 +298,85 @@ textarea:focus {
 
 .inline-config-form {
     display: grid;
-    grid-template-columns: auto minmax(160px, 220px) auto;
-    align-items: end;
+    grid-template-columns: auto minmax(160px, 220px);
+    align-items: center;
     gap: 12px;
     margin-top: 14px;
+}
+
+.ai-downgrade-config-form {
+    display: flex;
+    justify-content: flex-end;
+    min-width: 0;
+    margin-top: 14px;
+}
+
+.ai-downgrade-sentence {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 0 6px;
+    margin: 0;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.8;
+    text-align: right;
+}
+
+.ai-downgrade-config-form + .feedback {
+    text-align: right;
+}
+
+.inline-state-toggle {
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--danger);
+    line-height: inherit;
+}
+
+.inline-state-toggle.is-enabled {
+    color: var(--success);
+}
+
+.inline-state-toggle:focus {
+    outline: none;
+    box-shadow: 0 2px 0 rgba(10, 132, 255, 0.44);
+}
+
+.inline-threshold-field {
+    display: inline-block;
+    width: 42px;
+}
+
+.inline-threshold-input {
+    width: 100%;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+    padding: 0 0 2px;
+    background: transparent;
+    text-align: center;
+    font-weight: 750;
+}
+
+.inline-threshold-input:focus {
+    border-color: var(--accent);
+    box-shadow: none;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 .prompt-subsection {
@@ -438,7 +514,8 @@ fieldset {
 }
 
 .provider-grid button {
-    justify-self: start;
+    grid-column: 1 / -1;
+    justify-self: end;
 }
 
 .table-shell {

@@ -4,6 +4,8 @@
         aiProviders: [],
         aiProviderDowngradeConfig: {},
         defaultTitleFormatPrompt: "",
+        aiProviderDowngradeSaveTimer: null,
+        aiProviderDowngradeSaveVersion: 0,
         logRefreshTimer: null
     };
 
@@ -126,27 +128,18 @@
     }
 
     function bindAiProviderDowngradeConfig() {
-        document.getElementById("ai-downgrade-config-form").addEventListener("submit", async (event) => {
+        const form = document.getElementById("ai-downgrade-config-form");
+        const enabledToggle = document.getElementById("ai-auto-downgrade-enabled-toggle");
+        const thresholdInput = document.getElementById("ai-auto-downgrade-timeout-threshold");
+        form.addEventListener("submit", (event) => {
             event.preventDefault();
-            const autoDowngradeEnabled = document.getElementById("ai-auto-downgrade-enabled").checked;
-            const autoDowngradeTimeoutThreshold = Number(document.getElementById("ai-auto-downgrade-timeout-threshold").value || 0);
-            if (!Number.isInteger(autoDowngradeTimeoutThreshold) || autoDowngradeTimeoutThreshold < 1 || autoDowngradeTimeoutThreshold > 100) {
-                setFeedback("ai-downgrade-config-feedback", "自动降级超时次数必须是 1-100 之间的整数。", "is-error");
-                document.getElementById("ai-auto-downgrade-timeout-threshold").focus();
-                return;
-            }
-            setFeedback("ai-downgrade-config-feedback", "正在保存自动降级配置...", "");
-            try {
-                state.aiProviderDowngradeConfig = await fetchJson("/api/admin/ai-provider-downgrade-config", {
-                    method: "PUT",
-                    body: JSON.stringify({autoDowngradeEnabled, autoDowngradeTimeoutThreshold})
-                });
-                renderAiProviderDowngradeConfig();
-                setFeedback("ai-downgrade-config-feedback", "自动降级配置已保存。", "is-success");
-            } catch (error) {
-                setFeedback("ai-downgrade-config-feedback", error.message, "is-error");
-            }
+            scheduleAiProviderDowngradeSave();
         });
+        enabledToggle.addEventListener("click", () => {
+            setAiProviderDowngradeEnabled(enabledToggle.dataset.enabled !== "true");
+            scheduleAiProviderDowngradeSave();
+        });
+        thresholdInput.addEventListener("input", scheduleAiProviderDowngradeSave);
     }
 
     function bindAiForm() {
@@ -267,6 +260,57 @@
         renderAiProviderDowngradeConfig();
     }
 
+    function scheduleAiProviderDowngradeSave() {
+        state.aiProviderDowngradeSaveVersion += 1;
+        const saveVersion = state.aiProviderDowngradeSaveVersion;
+        if (state.aiProviderDowngradeSaveTimer) {
+            window.clearTimeout(state.aiProviderDowngradeSaveTimer);
+            state.aiProviderDowngradeSaveTimer = null;
+        }
+
+        const payload = readAiProviderDowngradePayload();
+        if (!payload) {
+            setFeedback("ai-downgrade-config-feedback", "自动降级超时次数必须是 1-100 之间的整数。", "is-error");
+            return;
+        }
+
+        setFeedback("ai-downgrade-config-feedback", "将在 2 秒后自动保存...", "");
+        state.aiProviderDowngradeSaveTimer = window.setTimeout(() => {
+            state.aiProviderDowngradeSaveTimer = null;
+            saveAiProviderDowngradeConfig(payload, saveVersion);
+        }, 2000);
+    }
+
+    function readAiProviderDowngradePayload() {
+        const autoDowngradeEnabled = document.getElementById("ai-auto-downgrade-enabled-toggle").dataset.enabled === "true";
+        const autoDowngradeTimeoutThreshold = Number(document.getElementById("ai-auto-downgrade-timeout-threshold").value || 0);
+        if (!Number.isInteger(autoDowngradeTimeoutThreshold) || autoDowngradeTimeoutThreshold < 1 || autoDowngradeTimeoutThreshold > 100) {
+            return null;
+        }
+        return {autoDowngradeEnabled, autoDowngradeTimeoutThreshold};
+    }
+
+    async function saveAiProviderDowngradeConfig(payload, saveVersion) {
+        setFeedback("ai-downgrade-config-feedback", "正在保存自动降级配置...", "");
+        try {
+            const response = await fetchJson("/api/admin/ai-provider-downgrade-config", {
+                method: "PUT",
+                body: JSON.stringify(payload)
+            });
+            if (saveVersion !== state.aiProviderDowngradeSaveVersion) {
+                return;
+            }
+            state.aiProviderDowngradeConfig = response;
+            renderAiProviderDowngradeConfig();
+            setFeedback("ai-downgrade-config-feedback", "自动降级配置已保存。", "is-success");
+        } catch (error) {
+            if (saveVersion !== state.aiProviderDowngradeSaveVersion) {
+                return;
+            }
+            setFeedback("ai-downgrade-config-feedback", error.message, "is-error");
+        }
+    }
+
     async function loadLogs() {
         const params = new URLSearchParams();
         params.set("lines", document.getElementById("log-lines").value || "300");
@@ -377,8 +421,17 @@
 
     function renderAiProviderDowngradeConfig() {
         const config = state.aiProviderDowngradeConfig || {};
-        document.getElementById("ai-auto-downgrade-enabled").checked = Boolean(config.autoDowngradeEnabled);
+        setAiProviderDowngradeEnabled(Boolean(config.autoDowngradeEnabled));
         document.getElementById("ai-auto-downgrade-timeout-threshold").value = config.autoDowngradeTimeoutThreshold || 3;
+    }
+
+    function setAiProviderDowngradeEnabled(enabled) {
+        const toggle = document.getElementById("ai-auto-downgrade-enabled-toggle");
+        const label = document.getElementById("ai-auto-downgrade-enabled-label");
+        toggle.dataset.enabled = enabled ? "true" : "false";
+        toggle.setAttribute("aria-pressed", enabled ? "true" : "false");
+        toggle.classList.toggle("is-enabled", enabled);
+        label.textContent = enabled ? "启用" : "禁用";
     }
 
     function bindAiDragSorting(body) {
