@@ -198,6 +198,7 @@ class PreviewControllerTest {
                 .andExpect(content().string(containsString("Copy LinkPeek URL")))
                 .andExpect(content().string(containsString("link-builder-input")))
                 .andExpect(content().string(containsString("link-builder-style")))
+                .andExpect(content().string(not(containsString(">Default<"))))
                 .andExpect(content().string(containsString("ai-render-rate-inline")))
                 .andExpect(content().string(containsString("ai-success-rate-inline")))
                 .andExpect(content().string(containsString("/favicon.ico")))
@@ -211,6 +212,8 @@ class PreviewControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(org.springframework.http.MediaType.valueOf("application/javascript")))
                 .andExpect(content().string(containsString("/api/preview/styles")))
+                .andExpect(content().string(containsString("FREESTYLE")))
+                .andExpect(content().string(not(containsString("textContent = \"Default\""))))
                 .andExpect(content().string(containsString("styleSelect.addEventListener")));
 
         mockMvc.perform(get("/admin"))

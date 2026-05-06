@@ -1,5 +1,6 @@
 (function () {
     const RANGE_VALUES = ["7d", "30d", "90d", "180d"];
+    const DEFAULT_STYLE = "FREESTYLE";
     const REFRESH_INTERVAL_MS = 30_000;
     const STATS_ADMIN_REVEAL_KEY = "6";
     const STATS_ADMIN_REVEAL_COUNT = 3;
@@ -144,11 +145,6 @@
         const selected = select.value;
         select.replaceChildren();
 
-        const defaultOption = document.createElement("option");
-        defaultOption.value = "";
-        defaultOption.textContent = "Default";
-        select.appendChild(defaultOption);
-
         state.styles.forEach((style) => {
             const option = document.createElement("option");
             option.value = style;
@@ -157,7 +153,9 @@
         });
 
         select.disabled = state.styles.length === 0;
-        select.value = state.styles.includes(selected) ? selected : "";
+        select.value = state.styles.includes(selected)
+            ? selected
+            : (state.styles.includes(DEFAULT_STYLE) ? DEFAULT_STYLE : state.styles[0] || "");
         select.dispatchEvent(new Event("change"));
     }
 
