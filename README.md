@@ -2,35 +2,36 @@
 
 一个使用 Java 编写的链接预览代理服务，面向 iMessage 一类聊天分享场景，为受支持的第三方链接生成稳定的 Open Graph 预览页。
 
-采用 `Spring Boot 3.x + Maven` 多模块结构，对外统一暴露 `GET /preview?url=...` 入口，内部通过 provider SPI 解析目标链接并输出预览 HTML。
-
-[在线体验 Live Demo](https://linkpeek.jianyutan.com/dashboard)
+采用 `Spring Boot 3.x + Maven` 多模块结构，对外统一暴露 `GET /preview?url=...` 入口，内部通过 provider SPI 解析目标链接，并重点提供可配置的 AI 标题生成能力。
 
 ![LinkPeek Dashboard 预览](docs/preview.png)
+
+[在线体验 Live Demo](https://linkpeek.jianyutan.com/dashboard)
 
 [Raycast Script](docs/linkpeek.sh)
 
 [快捷指令 Shortcut](https://www.icloud.com/shortcuts/178990c09c624dd3b45e88eec90e8a9a)
 
-![快捷指令使用指南](docs/快捷指令使用指南.png)
-
 ## 功能特点
 
-- 提供 `Bilibili` provider，支持标准视频链接和 `b23.tv` 短链。
-- 提供 `V2EX` provider，支持标准话题链接和带 `#reply` 锚点的话题链接，并为话题统一生成渐变标题卡片缩略图。
-- 提供 `NGA` provider，支持 `read.php?tid=...` 帖子链接，抓取标题与首楼摘要并生成预览卡片。
-- 提供 `LINUX DO` provider，支持公开主题链接，抓取主题 HTML 元数据并生成标题卡片。
-- 对爬虫请求返回 Open Graph HTML，对普通浏览器请求执行 `302` 跳转回原始链接。
-- 提供轻量支持判定接口，Raycast 脚本通过云端 provider registry 判断链接是否支持，新增 provider 后无需同步脚本规则。
-- 提供本地磁盘缓存，缓存元数据和缩略图，减少重复抓取。
-- 提供内部缩略图代理路由，`og:image` 指向服务自身地址，便于统一控制。
-- 保留视频代理路由占位，但目前明确返回 `501 Not Implemented`，不引入外部二进制依赖。
-- 内置 `SQLite + MyBatis` 统计子系统，自动采集创建、打开、失败和缩略图命中事件。
-- 普通浏览器打开会立即跳转，并通过有界后台任务异步补齐统计标题。
-- 自带统计页，适合自部署后直接查看运营数据。
-- 提供 `/admin` 管理后台，可维护提示词、Provider 配置、AI Provider 配置、服务日志和统计清理。
-- 文本卡片 provider 支持通过 `style` 参数触发 AI 标题生成，Bilibili 等真实图片卡片保持原图预览。
-- 使用多模块组织方式，便于后续扩展更多 provider。
+- AI 标题生成：文本卡片可通过 Style Prompt 生成标题，支持 `FREESTYLE` 随机风格、AI Provider fallback、请求超时和自动降级。
+- 统一预览入口：爬虫返回 Open Graph HTML，普通浏览器点击直接跳转原始链接。
+- 多平台 provider：内置 Bilibili、V2EX、NGA、LINUX DO，并保留 provider SPI 便于扩展。
+- 稳定缓存链路：本地缓存元数据和缩略图，并对并发预览渲染做单飞去重。
+- 运行时管理：`/admin` 可维护 Style Prompt、论坛 Cookie、AI Provider、服务日志和统计清理。
+- 数据看板：Dashboard 展示创建、打开、失败、热门链接、AI 渲染占比和 AI 成功率。
+- 自动化入口：Raycast Script 和 iOS Shortcut 可以直接生成 LinkPeek 分享链接。
+
+## AI 标题生成
+
+AI 标题生成是 LinkPeek 的核心增强能力：对 V2EX、NGA、LINUX DO 等文本卡片，服务会在保留原始内容的基础上，根据后台配置的 Style Prompt 生成更适合分享场景的一行标题；Bilibili 等真实图片卡片仍使用原始图片预览。
+
+- Style Prompt：控制标题风格，Style Key 保存和请求匹配都会统一转大写。
+- `FREESTYLE`：系统保留风格，会从已配置的 Style Prompt 中随机选择一个；Dashboard 生成器默认使用它。
+- Title Format Prompt：控制输出格式，Raw Content 始终作为独立 user message 放在最后。
+- AI Provider：可配置多条上游服务，按启用状态和排序 fallback；每个 Provider 有独立请求超时。
+- 自动降级：全局开启后，Provider 连续超时达到阈值会被移动到列表最后，并写入明显运行日志。
+- 缓存隔离：AI styled 预览使用 `canonical URL + style + prompt hash` 生成独立 `PreviewKey`，不同风格不会互相污染缓存。
 
 ## 安装（Docker）
 
@@ -44,17 +45,11 @@ docker compose up -d --build
 
 默认监听 `8080` 端口。
 
-建议启动前至少配置：
+建议生产环境至少配置：
 
 - `BASE_URL`：服务对外可访问的地址，例如 `https://preview.example.com`
-- `WEB_ICON_PATH`：可选的网页 favicon 文件路径，例如 `/data/favicon.svg` 或 `/data/favicon.ico`
-- `CACHE_DIR`：缓存目录，默认 `/data/cache`
-- `STATS_DB_PATH`：统计数据库路径，默认 `/data/stats/linkpeek.db`
 - `STATS_ADMIN_PASSWORD`：管理后台登录密码，配置后启用 `/admin`
-- `CACHE_MAX_SIZE_GB`：缓存空间上限，默认 `10`
-- `PREVIEW_WARMUP_THREADS`：普通浏览器打开后的异步标题预热线程数，默认 `2`
-- `PREVIEW_WARMUP_QUEUE_CAPACITY`：异步标题预热队列上限，默认 `64`
-- 将整个 `/data` 做持久化挂载，统一保存缓存和统计库文件
+- `/data` 持久化挂载：保存缓存、SQLite 数据库和日志
 
 ### 方式二：使用 `docker run`
 
@@ -83,23 +78,15 @@ docker run --rm \
 
 ## 快速开始 / 使用示例
 
-### 1. 启动服务
+### 启动
 
 ```bash
 docker compose up -d --build
 ```
 
-### 2. 准备一个对外可访问的域名
+生产部署时，把 `BASE_URL` 配置成服务公网地址，例如 `https://preview.example.com`。
 
-例如：
-
-```text
-https://preview.example.com
-```
-
-并将其配置给环境变量 `BASE_URL`。
-
-### 3. 分享预览链接
+### 生成预览链接
 
 统一使用这个入口，把原始链接做 URL 编码后放进 `url` 参数即可，例如：
 
@@ -107,81 +94,34 @@ https://preview.example.com
 https://preview.example.com/preview?url=https%3A%2F%2Fwww.v2ex.com%2Ft%2F1206093
 ```
 
-如果已经在后台配置了 Style Prompt `style=fun`，可以追加 `style` 参数让文本卡片标题由 AI 基于帖子正文生成：
+文本卡片可以追加 `style` 触发 AI 标题生成。Dashboard 生成器默认使用 `FREESTYLE`；该模式会从后台已配置的 Style Prompt 中随机选择一个：
 
 ```text
-https://preview.example.com/preview?url=https%3A%2F%2Fwww.v2ex.com%2Ft%2F1206093&style=fun
+https://preview.example.com/preview?url=https%3A%2F%2Fwww.v2ex.com%2Ft%2F1206093&style=FREESTYLE
 ```
 
-行为说明：
+常用入口：
 
-- 当 iMessage 或其他爬虫访问该链接时，服务返回 Open Graph HTML。
-- 当普通用户点击同一个链接时，服务会 `302` 跳转到原始链接。
-- 当 `style` 命中后台提示词且目标 provider 使用文本卡片时，服务会同步调用已启用的 AI Provider 生成一行中文标题；AI 失败时回退原标题。
-- Raycast 脚本会先调用云端支持判定接口，只有当前服务端 provider 支持该链接时才复制预览链接。
+| 地址 | 用途 |
+| --- | --- |
+| `/dashboard` | 统计看板和分享链接生成器 |
+| `/admin/login` | 管理后台 |
+| `/api/health` | 健康检查 |
+| `/api/preview/support?url=...` | 判断当前链接是否支持预览 |
+| `/doc.html` | OpenAPI 文档 |
 
-如果只需要判断一个链接当前是否支持预览，可以调用：
+支持判定示例：
 
 ```bash
 curl -G --data-urlencode "url=https://www.v2ex.com/t/1206093" \
   https://preview.example.com/api/preview/support
 ```
 
-支持时返回：
-
-```json
-{"supported":true}
-```
-
-合法但没有 provider 支持时返回：
-
-```json
-{"supported":false}
-```
-
-### 4. 本地验证抓取结果
-
 模拟抓取器请求：
 
 ```bash
 curl -A "facebookexternalhit/1.1" \
   "https://preview.example.com/preview?url=https%3A%2F%2Fwww.bilibili.com%2Fvideo%2FBV1xx411c7mD"
-```
-
-检查服务健康状态：
-
-```bash
-curl https://preview.example.com/api/health
-```
-
-返回：
-
-```json
-{"status":"ok"}
-```
-
-获取网页 favicon：
-
-```bash
-curl -I https://preview.example.com/favicon.ico
-```
-
-打开统计看板：
-
-```text
-https://preview.example.com/dashboard
-```
-
-查看 OpenAPI 文档：
-
-```text
-https://preview.example.com/doc.html
-```
-
-原始 OpenAPI JSON：
-
-```text
-https://preview.example.com/v3/api-docs
 ```
 
 ## 项目结构
@@ -227,55 +167,50 @@ LinkPeek/
 
 ## 核心逻辑 / 关键流程
 
-### 整体流程
-
 ```text
-用户分享 /preview?url=<目标链接>
-              |
-              v
-        服务校验并规范化 URL
-              |
-              v
-        provider registry 选择 provider
-              |
-              v
-  Bilibili 短链则先解析重定向为标准视频链接
-              |
-              v
-      根据 canonical URL 生成 PreviewKey
-              |
-      +-------+-------+
-      |               |
-      v               v
-  爬虫请求          普通浏览器请求
-      |               |
-      v               v
- 查缓存 / 抓元数据      记录打开事件
-      |               |
-      |               +--> 立即返回 302 跳转原始链接
-      |               |
-      |               +--> 本地无元数据时投递有界异步预热
-      |                    |
-      |                    v
-      |              后台抓标题并更新统计维表
-      v
- 渲染 Open Graph HTML + 记录统计事件
-      |
-      v
- 缩略图通过 /media/thumb/{previewKey}.jpg 按需下载与缓存
+/preview?url=<目标链接>&style=<可选风格>
+        |
+        v
+校验 URL -> provider registry -> canonical URL -> 基础 PreviewKey
+        |
+        v
+解析 style：空值走基础预览；普通 style 转大写匹配 Style Prompt；FREESTYLE 随机选择 Style Prompt
+        |
+        v
+命中 Style Prompt 时生成 styled PreviewKey（canonical URL + style + prompt hash）
+        |
+        +-------------------------------+
+        |                               |
+        v                               v
+     爬虫请求                         普通浏览器请求
+        |                               |
+        v                               v
+缓存 / 单飞锁 / 抓取元数据              记录打开事件并 302 跳转原始链接
+        |                               |
+        |                               +--> 本地无元数据时投递有界异步预热
+        v
+文本卡片 + Style Prompt -> 调用 AI Provider 生成标题
+        |
+        v
+AI Provider 按启用和排序 fallback，单 Provider 有独立请求超时；连续超时达到阈值可自动降级到列表最后
+        |
+        v
+成功则缓存 styled 元数据；失败、空返回或真实图片卡片则回退基础元数据
+        |
+        v
+渲染 Open Graph HTML，记录创建事件、AI 请求标记和 AI 成功标记
+        |
+        v
+缩略图通过 /media/thumb/{previewKey}.jpg 按需下载与缓存
 ```
 
-普通浏览器请求记录打开事件后会立即返回 `302` 跳转；如果本地还没有元数据，
-服务会投递一个有界后台任务异步抓取标题并更新统计维表。异步预热使用固定线程池、
-有限队列和按 `PreviewKey` 的单飞去重，避免高并发打开时重复抓取或占满资源。
+要点：
 
-### 当前版本设计原则
-
-- 对外只保留一个统一入口，避免平台路由继续膨胀。
-- provider 负责平台识别、canonical 化和元数据解析。
-- 服务层负责缓存、路由控制和 HTML 渲染。
-- 统计页和聚合查询全部内置在服务端，不依赖独立前端工程。
-- 首版优先保证预览链路稳定，不做纯 Java 的视频下载能力。
+- 对外只有 `/preview` 一个分享入口，provider 负责平台识别、canonical 化和元数据解析。
+- 基础预览和 AI styled 预览使用不同 `PreviewKey`，避免不同风格的标题互相污染缓存。
+- 并发请求同一个 `PreviewKey` 时会复用同一把本地锁，避免未命中缓存时重复触发渲染任务。
+- AI 标题只作用于文本卡片 provider；Bilibili 等真实图片卡片保持原图预览。
+- Dashboard 的 AI 渲染占比口径是 `ai_succeeded_count / create_count`，AI 成功率是 `ai_succeeded_count / ai_requested_count`。
 
 ## 进阶用法
 
@@ -311,8 +246,8 @@ LinkPeek/
 
 后台包含五个功能区：
 
-- 提示词设置：维护 Title Format Prompt（作为 system 提示词）和 `style -> Style Prompt`。Raw Content 会始终作为独立 user 消息放在最后，Style Prompt 只填写风格要求。
-- AI 服务配置：支持多条 AI Provider，按启用状态和排序 fallback。每个 Provider 可配置请求超时，列表内支持拖拽排序、直接启用/禁用和连通性测试。全局自动降级可按连续超时次数把触发的 Provider 移动到列表最后；该开关和阈值是全局配置，不属于单个 Provider 字段。`BaseURL` 填到 `/v1` 即可，例如 `https://api.openai.com/v1`，接口格式通过 Chat Completions / Responses 下拉框选择。API Key 按后台要求明文返回。
+- 提示词设置：维护 Title Format Prompt 和 `Style Key -> Style Prompt`。Style Key 保存和请求匹配都会统一转大写，`FREESTYLE` 是系统保留模式，会随机选择一个已配置 Style Prompt。
+- AI 服务配置：维护 AI Provider 列表、启用状态、拖拽排序、请求超时、连通性测试和全局自动降级。自动降级按连续超时次数触发，会把对应 Provider 移动到列表最后。
 - Provider 配置：维护 LinuxDo Cookie key/value（`_t`、`cf_clearance`、`_forum_session`）和 NGA 登录态（`NGA_PASSPORT_UID`、`NGA_PASSPORT_CID`）。这些值是运行时唯一来源，不再读取对应论坛环境变量。
 - 服务日志：查看应用滚动文件日志，支持行数、级别、关键词筛选和自动刷新。
 - 清理统计数据：调用 `POST /api/admin/stats/purge-all` 删除统计事件和链接聚合记录。
