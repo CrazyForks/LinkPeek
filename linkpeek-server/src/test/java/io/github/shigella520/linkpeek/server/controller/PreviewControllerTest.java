@@ -36,6 +36,9 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -431,6 +434,56 @@ class PreviewControllerTest {
     }
 
     @Test
+    void concurrentFreestylePreviewUsesSameStableStyleAndWaitsForCachedAiResult() throws Exception {
+        testPreviewProvider.generatedTextCard.set(true);
+        testAiTitleClient.generatedTitle.set("\"AI 并发标题\"");
+        testAiTitleClient.blockNextRequest();
+        long now = System.currentTimeMillis();
+        jdbcTemplate.update(
+                "INSERT INTO admin_prompt (style, prompt, updated_at) VALUES (?, ?, ?)",
+                "WORK", "工作风格", now
+        );
+        jdbcTemplate.update(
+                "INSERT INTO admin_prompt (style, prompt, updated_at) VALUES (?, ?, ?)",
+                "TB", "淘宝风格", now
+        );
+        jdbcTemplate.update(
+                "INSERT INTO ai_provider (name, enabled, sort_order, base_url, model, effort, api_key, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "local", 1, 1, "https://api.openai.com/v1/chat/completions", "test-model", "low", "test-key", now
+        );
+
+        CompletableFuture<MvcResult> first = CompletableFuture.supplyAsync(() -> performFreestylePreview());
+        org.junit.jupiter.api.Assertions.assertTrue(testAiTitleClient.awaitBlockedRequest());
+        CompletableFuture<MvcResult> second = CompletableFuture.supplyAsync(() -> performFreestylePreview());
+        Thread.sleep(50);
+        org.junit.jupiter.api.Assertions.assertEquals(1, testAiTitleClient.requests.get());
+        testAiTitleClient.releaseBlockedRequest();
+
+        org.junit.jupiter.api.Assertions.assertTrue(
+                first.get(2, TimeUnit.SECONDS).getResponse().getContentAsString(StandardCharsets.UTF_8).contains("AI 并发标题")
+        );
+        org.junit.jupiter.api.Assertions.assertTrue(
+                second.get(2, TimeUnit.SECONDS).getResponse().getContentAsString(StandardCharsets.UTF_8).contains("AI 并发标题")
+        );
+        org.junit.jupiter.api.Assertions.assertEquals(1, testAiTitleClient.requests.get());
+        org.junit.jupiter.api.Assertions.assertEquals(1, testPreviewProvider.resolutions.get());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                1,
+                jdbcTemplate.queryForObject(
+                        "SELECT COUNT(DISTINCT preview_key) FROM stats_event WHERE event_type = 'PREVIEW_CREATED'",
+                        Integer.class
+                )
+        );
+        org.junit.jupiter.api.Assertions.assertEquals(
+                1,
+                jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM stats_event WHERE event_type = 'PREVIEW_CREATED' AND cache_hit = 1",
+                        Integer.class
+                )
+        );
+    }
+
+    @Test
     void previewStyleDoesNotUseAiForRealImageCards() throws Exception {
         long now = System.currentTimeMillis();
         jdbcTemplate.update(
@@ -458,6 +511,19 @@ class PreviewControllerTest {
                         .param("url", "https://video.example.com/watch/abc")
                         .header("X-LinkPeek-Render-Mode", "invalid-mode"))
                 .andExpect(status().isBadRequest());
+    }
+
+    private MvcResult performFreestylePreview() {
+        try {
+            return mockMvc.perform(get("/preview")
+                            .param("url", "https://video.example.com/watch/abc")
+                            .param("style", "freestyle")
+                            .header(HttpHeaders.USER_AGENT, "facebookexternalhit/1.1"))
+                    .andExpect(status().isOk())
+                    .andReturn();
+        } catch (Exception exception) {
+            throw new RuntimeException(exception);
+        }
     }
 
     @Test
@@ -1055,6 +1121,8 @@ class PreviewControllerTest {
         private final AtomicInteger requests = new AtomicInteger();
         private final AtomicReference<AiTitlePrompt> prompt = new AtomicReference<>(new AiTitlePrompt("", "", ""));
         private final AtomicReference<String> generatedTitle = new AtomicReference<>("AI title");
+        private final AtomicReference<CountDownLatch> blockedRequestStarted = new AtomicReference<>();
+        private final AtomicReference<CountDownLatch> blockedRequestRelease = new AtomicReference<>();
 
         TestAiTitleClient() {
             super(null, null);
@@ -1069,13 +1137,49 @@ class PreviewControllerTest {
 
         @Override
         public AiTitleResult generateTitleResult(AiProviderRecord provider, AiTitlePrompt prompt) {
-            return new AiTitleResult(generateTitle(provider, prompt), 12);
+            requests.incrementAndGet();
+            this.prompt.set(prompt);
+            CountDownLatch started = blockedRequestStarted.get();
+            CountDownLatch release = blockedRequestRelease.get();
+            if (started != null && release != null) {
+                started.countDown();
+                try {
+                    org.junit.jupiter.api.Assertions.assertTrue(release.await(2, TimeUnit.SECONDS));
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException(exception);
+                } finally {
+                    blockedRequestStarted.set(null);
+                    blockedRequestRelease.set(null);
+                }
+            }
+            return new AiTitleResult(Optional.ofNullable(generatedTitle.get()), 12);
+        }
+
+        void blockNextRequest() {
+            blockedRequestStarted.set(new CountDownLatch(1));
+            blockedRequestRelease.set(new CountDownLatch(1));
+        }
+
+        boolean awaitBlockedRequest() throws InterruptedException {
+            CountDownLatch started = blockedRequestStarted.get();
+            return started != null && started.await(2, TimeUnit.SECONDS);
+        }
+
+        void releaseBlockedRequest() {
+            CountDownLatch release = blockedRequestRelease.get();
+            if (release != null) {
+                release.countDown();
+            }
         }
 
         void reset() {
             requests.set(0);
             prompt.set(new AiTitlePrompt("", "", ""));
             generatedTitle.set("AI title");
+            releaseBlockedRequest();
+            blockedRequestStarted.set(null);
+            blockedRequestRelease.set(null);
         }
     }
 

@@ -55,7 +55,7 @@ public class PreviewService {
 
     public PreviewLoadResult loadPreview(ResolvedPreview resolvedPreview, String style) {
         String requestedStyle = requestedStyle(style);
-        Optional<AiTitleService.StylePrompt> stylePrompt = aiTitleService.resolveStylePrompt(style);
+        Optional<AiTitleService.StylePrompt> stylePrompt = aiTitleService.resolveStylePrompt(style, resolvedPreview.canonicalUrl());
         if (stylePrompt.isPresent()) {
             return loadStyledPreview(resolvedPreview, stylePrompt.get(), requestedStyle);
         }
