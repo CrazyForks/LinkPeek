@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>LinkPeek Admin</title>
     <link rel="icon" href="/favicon.ico">
-    <link rel="stylesheet" href="/admin/styles.css?v=20260506-ai-downgrade-sentence">
+    <link rel="stylesheet" href="/admin/styles.css?v=20260507-preview-events">
 </head>
 <body>
 <header class="topbar">
@@ -115,6 +115,52 @@
                         </thead>
                         <tbody id="ai-table"></tbody>
                     </table>
+                </div>
+            </section>
+
+            <section class="panel" id="preview-events">
+                <div class="panel-head">
+                    <div>
+                        <p class="panel-kicker">Links</p>
+                        <h2>链接创建记录</h2>
+                    </div>
+                    <button type="submit" form="preview-event-form">刷新记录</button>
+                </div>
+                <form id="preview-event-form" class="preview-event-controls">
+                    <label>
+                        <span>关键词</span>
+                        <input id="preview-event-query" type="search" placeholder="链接 / Provider / Style / PreviewKey" autocomplete="off">
+                    </label>
+                    <label>
+                        <span>每页</span>
+                        <select id="preview-event-size">
+                            <option value="10">10</option>
+                            <option value="20" selected>20</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </label>
+                </form>
+                <p id="preview-event-feedback" class="feedback" role="status" aria-live="polite"></p>
+                <div class="table-shell preview-event-table-shell">
+                    <table class="preview-event-table">
+                        <thead>
+                        <tr>
+                            <th>创建时间</th>
+                            <th>原始链接</th>
+                            <th>Provider</th>
+                            <th>AI / Style</th>
+                            <th>耗时</th>
+                            <th>缓存</th>
+                        </tr>
+                        </thead>
+                        <tbody id="preview-event-table"></tbody>
+                    </table>
+                </div>
+                <div class="pagination-bar">
+                    <button type="button" class="secondary" id="preview-event-prev">上一页</button>
+                    <span id="preview-event-page-info">第 1 页</span>
+                    <button type="button" class="secondary" id="preview-event-next">下一页</button>
                 </div>
             </section>
 
@@ -293,6 +339,6 @@
     </section>
 </div>
 
-<script src="/admin/app.js?v=20260506-style-uppercase"></script>
+<script src="/admin/app.js?v=20260507-preview-events"></script>
 </body>
 </html>

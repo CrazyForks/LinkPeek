@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
@@ -52,22 +54,37 @@ public class PreviewService {
     }
 
     public PreviewLoadResult loadPreview(ResolvedPreview resolvedPreview, String style) {
+        String requestedStyle = requestedStyle(style);
         Optional<AiTitleService.StylePrompt> stylePrompt = aiTitleService.resolveStylePrompt(style);
         if (stylePrompt.isPresent()) {
-            return loadStyledPreview(resolvedPreview, stylePrompt.get());
+            return loadStyledPreview(resolvedPreview, stylePrompt.get(), requestedStyle);
         }
 
-        return loadBasePreview(resolvedPreview);
+        PreviewLoadResult result = loadBasePreview(resolvedPreview);
+        return requestedStyle == null ? result : result.withStyleStats(requestedStyle, null);
     }
 
     private PreviewLoadResult loadStyledPreview(
             ResolvedPreview resolvedPreview,
-            AiTitleService.StylePrompt stylePrompt
+            AiTitleService.StylePrompt stylePrompt,
+            String requestedStyle
     ) {
         PreviewKey styledPreviewKey = aiTitleService.styledPreviewKey(resolvedPreview.canonicalUrl(), stylePrompt);
         Optional<PreviewMetadata> cachedStyled = cacheManager.getMetadata(styledPreviewKey);
         if (cachedStyled.isPresent()) {
-            return new PreviewLoadResult(resolvedPreview, cachedStyled.get(), styledPreviewKey, true, true, true);
+            return new PreviewLoadResult(
+                    resolvedPreview,
+                    cachedStyled.get(),
+                    styledPreviewKey,
+                    true,
+                    true,
+                    true,
+                    requestedStyle,
+                    stylePrompt.style(),
+                    List.of(),
+                    0,
+                    0
+            );
         }
 
         ReentrantLock lock = metadataLockFor(styledPreviewKey);
@@ -75,20 +92,47 @@ public class PreviewService {
         try {
             cachedStyled = cacheManager.getMetadata(styledPreviewKey);
             if (cachedStyled.isPresent()) {
-                return new PreviewLoadResult(resolvedPreview, cachedStyled.get(), styledPreviewKey, true, true, true);
+                return new PreviewLoadResult(
+                        resolvedPreview,
+                        cachedStyled.get(),
+                        styledPreviewKey,
+                        true,
+                        true,
+                        true,
+                        requestedStyle,
+                        stylePrompt.style(),
+                        List.of(),
+                        0,
+                        0
+                );
             }
 
             PreviewLoadResult baseResult = loadBasePreview(resolvedPreview);
             PreviewMetadata aiMetadata = resolvedPreview.provider().enrichForAiTitle(baseResult.metadata(), resolvedPreview.sourceUrl());
             if (!aiTitleService.supportsAiTitle(aiMetadata)) {
-                return baseResult;
+                return baseResult.withStyleStats(requestedStyle, stylePrompt.style());
             }
-            Optional<PreviewMetadata> styledMetadata = aiTitleService.generateStyledMetadata(aiMetadata, stylePrompt);
-            if (styledMetadata.isPresent()) {
-                cacheManager.storeMetadata(styledPreviewKey, styledMetadata.get());
-                return new PreviewLoadResult(resolvedPreview, styledMetadata.get(), styledPreviewKey, false, true, true);
+            AiTitleService.StyledMetadataResult styledResult = aiTitleService.generateStyledMetadataResult(aiMetadata, stylePrompt);
+            if (styledResult.metadata().isPresent()) {
+                PreviewMetadata styledMetadata = styledResult.metadata().get();
+                cacheManager.storeMetadata(styledPreviewKey, styledMetadata);
+                return new PreviewLoadResult(
+                        resolvedPreview,
+                        styledMetadata,
+                        styledPreviewKey,
+                        false,
+                        true,
+                        true,
+                        requestedStyle,
+                        stylePrompt.style(),
+                        styledResult.providerNames(),
+                        styledResult.durationMs(),
+                        baseResult.crawlDurationMs()
+                );
             }
-            return baseResult.withAiStats(true, false);
+            return baseResult.withAiStats(true, false)
+                    .withStyleStats(requestedStyle, stylePrompt.style())
+                    .withAiAttemptStats(styledResult.providerNames(), styledResult.durationMs());
         } finally {
             lock.unlock();
         }
@@ -108,9 +152,11 @@ public class PreviewService {
                 return new PreviewLoadResult(resolvedPreview, cached.get(), true);
             }
 
+            long startedAt = System.nanoTime();
             PreviewMetadata metadata = resolvedPreview.provider().resolve(resolvedPreview.sourceUrl());
+            long crawlDurationMs = elapsedMillis(startedAt);
             cacheManager.storeMetadata(resolvedPreview.previewKey(), metadata);
-            return new PreviewLoadResult(resolvedPreview, metadata, false);
+            return new PreviewLoadResult(resolvedPreview, metadata, false).withCrawlDuration(crawlDurationMs);
         } finally {
             lock.unlock();
         }
@@ -123,6 +169,17 @@ public class PreviewService {
     public Optional<PreviewLoadResult> getCachedPreview(ResolvedPreview resolvedPreview) {
         return cacheManager.getMetadata(resolvedPreview.previewKey())
                 .map(metadata -> new PreviewLoadResult(resolvedPreview, metadata, true));
+    }
+
+    private String requestedStyle(String style) {
+        if (style == null || style.isBlank()) {
+            return null;
+        }
+        return style.strip().toUpperCase(Locale.ROOT);
+    }
+
+    private long elapsedMillis(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000;
     }
 
     public Path ensureThumbnail(String previewKeyValue) {
@@ -179,14 +236,83 @@ public class PreviewService {
             PreviewKey previewKey,
             boolean cacheHit,
             boolean aiRequested,
-            boolean aiSucceeded
+            boolean aiSucceeded,
+            String requestedStyle,
+            String actualStyle,
+            List<String> aiProviderNames,
+            long aiDurationMs,
+            long crawlDurationMs
     ) {
         public PreviewLoadResult(ResolvedPreview resolvedPreview, PreviewMetadata metadata, boolean cacheHit) {
-            this(resolvedPreview, metadata, resolvedPreview.previewKey(), cacheHit, false, false);
+            this(resolvedPreview, metadata, resolvedPreview.previewKey(), cacheHit, false, false, null, null, List.of(), 0, 0);
+        }
+
+        public PreviewLoadResult {
+            aiProviderNames = aiProviderNames == null ? List.of() : List.copyOf(aiProviderNames);
         }
 
         public PreviewLoadResult withAiStats(boolean aiRequested, boolean aiSucceeded) {
-            return new PreviewLoadResult(resolvedPreview, metadata, previewKey, cacheHit, aiRequested, aiSucceeded);
+            return new PreviewLoadResult(
+                    resolvedPreview,
+                    metadata,
+                    previewKey,
+                    cacheHit,
+                    aiRequested,
+                    aiSucceeded,
+                    requestedStyle,
+                    actualStyle,
+                    aiProviderNames,
+                    aiDurationMs,
+                    crawlDurationMs
+            );
+        }
+
+        public PreviewLoadResult withStyleStats(String requestedStyle, String actualStyle) {
+            return new PreviewLoadResult(
+                    resolvedPreview,
+                    metadata,
+                    previewKey,
+                    cacheHit,
+                    aiRequested,
+                    aiSucceeded,
+                    requestedStyle,
+                    actualStyle,
+                    aiProviderNames,
+                    aiDurationMs,
+                    crawlDurationMs
+            );
+        }
+
+        public PreviewLoadResult withAiAttemptStats(List<String> providerNames, long durationMs) {
+            return new PreviewLoadResult(
+                    resolvedPreview,
+                    metadata,
+                    previewKey,
+                    cacheHit,
+                    aiRequested,
+                    aiSucceeded,
+                    requestedStyle,
+                    actualStyle,
+                    providerNames,
+                    durationMs,
+                    crawlDurationMs
+            );
+        }
+
+        public PreviewLoadResult withCrawlDuration(long durationMs) {
+            return new PreviewLoadResult(
+                    resolvedPreview,
+                    metadata,
+                    previewKey,
+                    cacheHit,
+                    aiRequested,
+                    aiSucceeded,
+                    requestedStyle,
+                    actualStyle,
+                    aiProviderNames,
+                    aiDurationMs,
+                    durationMs
+            );
         }
     }
 

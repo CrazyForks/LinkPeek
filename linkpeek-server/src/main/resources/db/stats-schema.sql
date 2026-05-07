@@ -18,6 +18,12 @@ CREATE TABLE IF NOT EXISTS stats_event (
     cache_hit INTEGER NOT NULL,
     ai_requested INTEGER NOT NULL DEFAULT 0,
     ai_succeeded INTEGER NOT NULL DEFAULT 0,
+    source_url TEXT,
+    requested_style TEXT,
+    actual_style TEXT,
+    ai_provider_names TEXT,
+    ai_duration_ms INTEGER NOT NULL DEFAULT 0,
+    crawl_duration_ms INTEGER NOT NULL DEFAULT 0,
     duration_ms INTEGER NOT NULL,
     client_type TEXT NOT NULL,
     error_code TEXT

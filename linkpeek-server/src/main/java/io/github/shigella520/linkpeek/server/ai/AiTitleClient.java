@@ -39,6 +39,10 @@ public class AiTitleClient {
     }
 
     public Optional<String> generateTitle(AiProviderRecord provider, AiTitlePrompt prompt) throws IOException, InterruptedException {
+        return generateTitleResult(provider, prompt).title();
+    }
+
+    public AiTitleResult generateTitleResult(AiProviderRecord provider, AiTitlePrompt prompt) throws IOException, InterruptedException {
         AiApiKind apiKind = AiApiKind.fromValue(provider.getApiKind());
         URI endpointUri = apiKind.endpointUri(provider.getBaseUrl());
         byte[] body = switch (apiKind) {
@@ -99,10 +103,11 @@ public class AiTitleClient {
                 responseBody
         );
         JsonNode payload = objectMapper.readTree(response.body());
-        return switch (apiKind) {
+        Optional<String> title = switch (apiKind) {
             case RESPONSES -> extractResponsesText(payload);
             case CHAT_COMPLETIONS -> extractChatText(payload);
         };
+        return new AiTitleResult(title, durationMs);
     }
 
     private byte[] responsesBody(AiProviderRecord provider, AiTitlePrompt prompt) throws IOException {
@@ -208,5 +213,8 @@ public class AiTitleClient {
             return text;
         }
         return text.substring(0, MAX_BODY_LOG_CHARS).stripTrailing() + "...";
+    }
+
+    public record AiTitleResult(Optional<String> title, long durationMs) {
     }
 }

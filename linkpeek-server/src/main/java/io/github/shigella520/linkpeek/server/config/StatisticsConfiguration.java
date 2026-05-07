@@ -73,6 +73,12 @@ public class StatisticsConfiguration {
             JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
             ensureColumn(jdbcTemplate, "stats_event", "ai_requested", "INTEGER NOT NULL DEFAULT 0");
             ensureColumn(jdbcTemplate, "stats_event", "ai_succeeded", "INTEGER NOT NULL DEFAULT 0");
+            ensureColumn(jdbcTemplate, "stats_event", "source_url", "TEXT");
+            ensureColumn(jdbcTemplate, "stats_event", "requested_style", "TEXT");
+            ensureColumn(jdbcTemplate, "stats_event", "actual_style", "TEXT");
+            ensureColumn(jdbcTemplate, "stats_event", "ai_provider_names", "TEXT");
+            ensureColumn(jdbcTemplate, "stats_event", "ai_duration_ms", "INTEGER NOT NULL DEFAULT 0");
+            ensureColumn(jdbcTemplate, "stats_event", "crawl_duration_ms", "INTEGER NOT NULL DEFAULT 0");
             ensureColumn(jdbcTemplate, "ai_provider", "request_timeout_seconds", "INTEGER NOT NULL DEFAULT 45");
         }
 

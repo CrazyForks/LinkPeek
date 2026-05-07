@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="io.github.shigella520.linkpeek.server.admin.persistence.AdminPreviewEventMapper">
+    <sql id="previewEventFilter">
+        event.event_type = 'PREVIEW_CREATED'
+        <if test="query != null and query != ''">
+            AND (
+                event.preview_key LIKE '%' || #{query} || '%'
+                OR event.source_url LIKE '%' || #{query} || '%'
+                OR link.canonical_url LIKE '%' || #{query} || '%'
+                OR event.provider_id LIKE '%' || #{query} || '%'
+                OR event.requested_style LIKE '%' || #{query} || '%'
+                OR event.actual_style LIKE '%' || #{query} || '%'
+                OR event.ai_provider_names LIKE '%' || #{query} || '%'
+            )
+        </if>
+    </sql>
+
+    <select id="countPreviewEvents" resultType="long">
+        SELECT COUNT(*)
+        FROM stats_event event
+        LEFT JOIN stats_link link ON link.preview_key = event.preview_key
+        WHERE <include refid="previewEventFilter"/>
+    </select>
+
+    <select id="selectPreviewEvents" resultType="io.github.shigella520.linkpeek.server.admin.model.AdminPreviewEventRow">
+        SELECT
+            event.id,
+            event.occurred_at,
+            event.preview_key,
+            COALESCE(event.source_url, '') AS source_url,
+            COALESCE(link.canonical_url, '') AS canonical_url,
+            event.provider_id,
+            event.ai_requested,
+            event.ai_succeeded,
+            COALESCE(event.requested_style, '') AS requested_style,
+            COALESCE(event.actual_style, '') AS actual_style,
+            COALESCE(event.ai_provider_names, '') AS ai_provider_names,
+            event.ai_duration_ms,
+            event.crawl_duration_ms,
+            event.duration_ms,
+            event.cache_hit
+        FROM stats_event event
+        LEFT JOIN stats_link link ON link.preview_key = event.preview_key
+        WHERE <include refid="previewEventFilter"/>
+        ORDER BY event.occurred_at DESC, event.id DESC
+        LIMIT #{limit}
+        OFFSET #{offset}
+    </select>
+</mapper>

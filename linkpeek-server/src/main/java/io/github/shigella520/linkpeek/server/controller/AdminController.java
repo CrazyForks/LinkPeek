@@ -5,6 +5,7 @@ import io.github.shigella520.linkpeek.server.admin.model.AiProviderRecord;
 import io.github.shigella520.linkpeek.server.admin.persistence.AdminPromptMapper;
 import io.github.shigella520.linkpeek.server.admin.persistence.AiProviderMapper;
 import io.github.shigella520.linkpeek.server.admin.service.AdminAuthService;
+import io.github.shigella520.linkpeek.server.admin.service.AdminPreviewEventService;
 import io.github.shigella520.linkpeek.server.admin.service.AiTitleConfigService;
 import io.github.shigella520.linkpeek.server.admin.service.ProviderConfigService;
 import io.github.shigella520.linkpeek.server.admin.service.ServiceLogService;
@@ -65,6 +66,7 @@ public class AdminController {
     private final AiTitleClient aiTitleClient;
     private final ServiceLogService serviceLogService;
     private final StatisticsMaintenanceService statisticsMaintenanceService;
+    private final AdminPreviewEventService adminPreviewEventService;
     private final Clock clock;
 
     public AdminController(
@@ -77,6 +79,7 @@ public class AdminController {
             AiTitleClient aiTitleClient,
             ServiceLogService serviceLogService,
             StatisticsMaintenanceService statisticsMaintenanceService,
+            AdminPreviewEventService adminPreviewEventService,
             Clock clock
     ) {
         this.adminAuthService = adminAuthService;
@@ -88,6 +91,7 @@ public class AdminController {
         this.aiTitleClient = aiTitleClient;
         this.serviceLogService = serviceLogService;
         this.statisticsMaintenanceService = statisticsMaintenanceService;
+        this.adminPreviewEventService = adminPreviewEventService;
         this.clock = clock;
     }
 
@@ -116,6 +120,30 @@ public class AdminController {
     public StatisticsMaintenanceService.PurgeResult purgeAllStats(HttpServletRequest request) {
         adminAuthService.requireAuthenticated(request);
         return statisticsMaintenanceService.purgeAllData();
+    }
+
+    @GetMapping("/preview-events")
+    public AdminPreviewEventService.PreviewEventPage previewEvents(
+            HttpServletRequest request,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(name = "q", required = false) String query
+    ) {
+        adminAuthService.requireAuthenticated(request);
+        return adminPreviewEventService.previewEvents(page, size, query);
+    }
+
+    @DeleteMapping("/preview-events/{previewKey}/cache")
+    public AdminPreviewEventService.CacheClearResponse clearPreviewCache(
+            HttpServletRequest request,
+            @PathVariable String previewKey
+    ) {
+        adminAuthService.requireAuthenticated(request);
+        try {
+            return adminPreviewEventService.clearCache(previewKey);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
     }
 
     @GetMapping("/logs")

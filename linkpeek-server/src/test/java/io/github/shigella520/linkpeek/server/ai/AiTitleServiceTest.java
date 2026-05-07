@@ -417,6 +417,11 @@ class AiTitleServiceTest {
 
         @Override
         public Optional<String> generateTitle(AiProviderRecord provider, AiTitlePrompt prompt) throws IOException {
+            return generateTitleResult(provider, prompt).title();
+        }
+
+        @Override
+        public AiTitleResult generateTitleResult(AiProviderRecord provider, AiTitlePrompt prompt) throws IOException {
             requestedProviderIds.add(provider.getId());
             requestedPrompts.add(prompt);
             if (timeoutProviderIds.contains(provider.getId())) {
@@ -425,7 +430,7 @@ class AiTitleServiceTest {
             if (failProviderIds.contains(provider.getId())) {
                 throw new IOException("provider failed");
             }
-            return Optional.ofNullable(title);
+            return new AiTitleResult(Optional.ofNullable(title), 25);
         }
     }
 }

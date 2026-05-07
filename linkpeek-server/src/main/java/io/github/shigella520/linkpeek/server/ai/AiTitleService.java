@@ -122,26 +122,37 @@ public class AiTitleService {
     }
 
     public Optional<PreviewMetadata> generateStyledMetadata(PreviewMetadata metadata, StylePrompt stylePrompt) {
+        return generateStyledMetadataResult(metadata, stylePrompt).metadata();
+    }
+
+    public StyledMetadataResult generateStyledMetadataResult(PreviewMetadata metadata, StylePrompt stylePrompt) {
         if (!supportsAiTitle(metadata)) {
-            return Optional.empty();
+            return StyledMetadataResult.empty();
         }
 
         AiTitlePrompt prompt = buildPrompt(stylePrompt.prompt(), metadata.rawContent(), stylePrompt.titleFormatPrompt());
         List<AiProviderRecord> providers = aiProviderMapper.selectEnabledProviders();
+        AiAttemptStats attemptStats = new AiAttemptStats();
         for (AiProviderRecord provider : providers) {
+            long startedAt = System.nanoTime();
             try {
-                Optional<String> generated = aiTitleClient.generateTitle(provider, prompt)
+                AiTitleClient.AiTitleResult result = aiTitleClient.generateTitleResult(provider, prompt);
+                long durationMs = result.durationMs() > 0 ? result.durationMs() : elapsedMillis(startedAt);
+                attemptStats.record(provider, durationMs);
+                Optional<String> generated = result.title()
                         .map(this::cleanTitle)
                         .filter(StringUtils::hasText);
                 recordAiProviderSuccess(provider);
                 if (generated.isPresent()) {
-                    return Optional.of(withTitle(metadata, generated.get()));
+                    return attemptStats.result(Optional.of(withTitle(metadata, generated.get())));
                 }
             } catch (InterruptedException exception) {
+                attemptStats.record(provider, elapsedMillis(startedAt));
                 Thread.currentThread().interrupt();
                 log.warn("ai_title_request_interrupted providerId={} style={}", provider.getId(), stylePrompt.style(), exception);
-                return Optional.empty();
+                return attemptStats.result(Optional.empty());
             } catch (RuntimeException | java.io.IOException exception) {
+                attemptStats.record(provider, elapsedMillis(startedAt));
                 log.warn(
                         "ai_title_request_failed providerId={} style={} baseUrl={} message={}",
                         provider.getId(),
@@ -154,7 +165,7 @@ public class AiTitleService {
                 }
             }
         }
-        return Optional.empty();
+        return attemptStats.result(Optional.empty());
     }
 
     public AiTitlePrompt buildPrompt(String stylePrompt, String rawContent) {
@@ -264,6 +275,34 @@ public class AiTitleService {
         }
     }
 
+    private long elapsedMillis(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000;
+    }
+
     public record StylePrompt(String style, String prompt, String titleFormatPrompt, String promptHash) {
+    }
+
+    public record StyledMetadataResult(Optional<PreviewMetadata> metadata, List<String> providerNames, long durationMs) {
+        private static StyledMetadataResult empty() {
+            return new StyledMetadataResult(Optional.empty(), List.of(), 0);
+        }
+    }
+
+    private static final class AiAttemptStats {
+        private final java.util.LinkedHashSet<String> providerNames = new java.util.LinkedHashSet<>();
+        private long durationMs;
+
+        private void record(AiProviderRecord provider, long durationMs) {
+            if (provider != null && StringUtils.hasText(provider.getName())) {
+                providerNames.add(provider.getName().strip());
+            }
+            if (durationMs > 0) {
+                this.durationMs += durationMs;
+            }
+        }
+
+        private StyledMetadataResult result(Optional<PreviewMetadata> metadata) {
+            return new StyledMetadataResult(metadata, List.copyOf(providerNames), durationMs);
+        }
     }
 }
