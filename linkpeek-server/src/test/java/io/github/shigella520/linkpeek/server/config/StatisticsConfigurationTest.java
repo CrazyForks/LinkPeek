@@ -43,6 +43,12 @@ class StatisticsConfigurationTest {
 
             assertTrue(hasColumn(jdbcTemplate, "stats_event", "ai_requested"));
             assertTrue(hasColumn(jdbcTemplate, "stats_event", "ai_succeeded"));
+            assertTrue(hasColumn(jdbcTemplate, "stats_event", "source_url"));
+            assertTrue(hasColumn(jdbcTemplate, "stats_event", "requested_style"));
+            assertTrue(hasColumn(jdbcTemplate, "stats_event", "actual_style"));
+            assertTrue(hasColumn(jdbcTemplate, "stats_event", "ai_provider_names"));
+            assertTrue(hasColumn(jdbcTemplate, "stats_event", "ai_duration_ms"));
+            assertTrue(hasColumn(jdbcTemplate, "stats_event", "crawl_duration_ms"));
             assertTrue(hasColumn(jdbcTemplate, "ai_provider", "request_timeout_seconds"));
             jdbcTemplate.update("""
                     INSERT INTO stats_event (
@@ -59,6 +65,13 @@ class StatisticsConfigurationTest {
                     1,
                     jdbcTemplate.queryForObject(
                             "SELECT COUNT(*) FROM stats_event WHERE ai_requested = 0 AND ai_succeeded = 0",
+                            Integer.class
+                    )
+            );
+            assertEquals(
+                    1,
+                    jdbcTemplate.queryForObject(
+                            "SELECT COUNT(*) FROM stats_event WHERE ai_duration_ms = 0 AND crawl_duration_ms = 0",
                             Integer.class
                     )
             );

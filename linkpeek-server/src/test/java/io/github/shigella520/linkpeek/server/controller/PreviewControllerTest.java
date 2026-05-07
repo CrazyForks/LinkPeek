@@ -34,7 +34,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -230,6 +234,9 @@ class PreviewControllerTest {
                 .andExpect(content().string(containsString("provider-config")))
                 .andExpect(content().string(containsString("service-logs")))
                 .andExpect(content().string(containsString("ai-providers")))
+                .andExpect(content().string(containsString("preview-events")))
+                .andExpect(content().string(containsString("preview-event-form")))
+                .andExpect(content().string(containsString("preview-event-table")))
                 .andExpect(content().string(containsString("ai-new-button")))
                 .andExpect(content().string(containsString("ai-api-kind")))
                 .andExpect(content().string(containsString("https://api.openai.com/v1")))
@@ -245,16 +252,18 @@ class PreviewControllerTest {
                     String html = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
                     int promptIndex = html.indexOf("id=\"prompts\"");
                     int aiIndex = html.indexOf("id=\"ai-providers\"");
+                    int previewEventsIndex = html.indexOf("id=\"preview-events\"");
                     int providerIndex = html.indexOf("id=\"provider-config\"");
                     int logsIndex = html.indexOf("id=\"service-logs\"");
                     int purgeIndex = html.indexOf("id=\"purge\"");
                     org.junit.jupiter.api.Assertions.assertTrue(
                             promptIndex >= 0
                                     && promptIndex < aiIndex
-                                    && aiIndex < providerIndex
+                                    && aiIndex < previewEventsIndex
+                                    && previewEventsIndex < providerIndex
                                     && providerIndex < logsIndex
                                     && logsIndex < purgeIndex,
-                            "Expected admin module order: prompts, AI providers, provider config, service logs, purge."
+                            "Expected admin module order: prompts, AI providers, preview events, provider config, service logs, purge."
                     );
                 });
 
@@ -272,7 +281,8 @@ class PreviewControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(org.springframework.http.MediaType.valueOf("application/javascript")))
                 .andExpect(content().string(containsString("/api/admin/logs")))
-                .andExpect(content().string(containsString("/api/admin/ai-title-config")));
+                .andExpect(content().string(containsString("/api/admin/ai-title-config")))
+                .andExpect(content().string(containsString("/api/admin/preview-events")));
 
         mockMvc.perform(get("/admin/login.js"))
                 .andExpect(status().isOk())
@@ -377,6 +387,23 @@ class PreviewControllerTest {
                         Integer.class
                 )
         );
+        Map<String, Object> firstCreatedEvent = jdbcTemplate.queryForMap(
+                """
+                        SELECT source_url, requested_style, actual_style, ai_provider_names, ai_duration_ms, crawl_duration_ms, duration_ms, cache_hit
+                        FROM stats_event
+                        WHERE event_type = 'PREVIEW_CREATED'
+                        ORDER BY id ASC
+                        LIMIT 1
+                        """
+        );
+        org.junit.jupiter.api.Assertions.assertEquals("https://video.example.com/watch/abc", firstCreatedEvent.get("source_url"));
+        org.junit.jupiter.api.Assertions.assertEquals("FUN", firstCreatedEvent.get("requested_style"));
+        org.junit.jupiter.api.Assertions.assertEquals("FUN", firstCreatedEvent.get("actual_style"));
+        org.junit.jupiter.api.Assertions.assertEquals("local", firstCreatedEvent.get("ai_provider_names"));
+        org.junit.jupiter.api.Assertions.assertEquals(12, ((Number) firstCreatedEvent.get("ai_duration_ms")).intValue());
+        org.junit.jupiter.api.Assertions.assertTrue(((Number) firstCreatedEvent.get("crawl_duration_ms")).longValue() >= 0);
+        org.junit.jupiter.api.Assertions.assertTrue(((Number) firstCreatedEvent.get("duration_ms")).longValue() >= 0);
+        org.junit.jupiter.api.Assertions.assertEquals(0, ((Number) firstCreatedEvent.get("cache_hit")).intValue());
     }
 
     @Test
@@ -407,6 +434,56 @@ class PreviewControllerTest {
     }
 
     @Test
+    void concurrentFreestylePreviewUsesSameStableStyleAndWaitsForCachedAiResult() throws Exception {
+        testPreviewProvider.generatedTextCard.set(true);
+        testAiTitleClient.generatedTitle.set("\"AI 并发标题\"");
+        testAiTitleClient.blockNextRequest();
+        long now = System.currentTimeMillis();
+        jdbcTemplate.update(
+                "INSERT INTO admin_prompt (style, prompt, updated_at) VALUES (?, ?, ?)",
+                "WORK", "工作风格", now
+        );
+        jdbcTemplate.update(
+                "INSERT INTO admin_prompt (style, prompt, updated_at) VALUES (?, ?, ?)",
+                "TB", "淘宝风格", now
+        );
+        jdbcTemplate.update(
+                "INSERT INTO ai_provider (name, enabled, sort_order, base_url, model, effort, api_key, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "local", 1, 1, "https://api.openai.com/v1/chat/completions", "test-model", "low", "test-key", now
+        );
+
+        CompletableFuture<MvcResult> first = CompletableFuture.supplyAsync(() -> performFreestylePreview());
+        org.junit.jupiter.api.Assertions.assertTrue(testAiTitleClient.awaitBlockedRequest());
+        CompletableFuture<MvcResult> second = CompletableFuture.supplyAsync(() -> performFreestylePreview());
+        Thread.sleep(50);
+        org.junit.jupiter.api.Assertions.assertEquals(1, testAiTitleClient.requests.get());
+        testAiTitleClient.releaseBlockedRequest();
+
+        org.junit.jupiter.api.Assertions.assertTrue(
+                first.get(2, TimeUnit.SECONDS).getResponse().getContentAsString(StandardCharsets.UTF_8).contains("AI 并发标题")
+        );
+        org.junit.jupiter.api.Assertions.assertTrue(
+                second.get(2, TimeUnit.SECONDS).getResponse().getContentAsString(StandardCharsets.UTF_8).contains("AI 并发标题")
+        );
+        org.junit.jupiter.api.Assertions.assertEquals(1, testAiTitleClient.requests.get());
+        org.junit.jupiter.api.Assertions.assertEquals(1, testPreviewProvider.resolutions.get());
+        org.junit.jupiter.api.Assertions.assertEquals(
+                1,
+                jdbcTemplate.queryForObject(
+                        "SELECT COUNT(DISTINCT preview_key) FROM stats_event WHERE event_type = 'PREVIEW_CREATED'",
+                        Integer.class
+                )
+        );
+        org.junit.jupiter.api.Assertions.assertEquals(
+                1,
+                jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM stats_event WHERE event_type = 'PREVIEW_CREATED' AND cache_hit = 1",
+                        Integer.class
+                )
+        );
+    }
+
+    @Test
     void previewStyleDoesNotUseAiForRealImageCards() throws Exception {
         long now = System.currentTimeMillis();
         jdbcTemplate.update(
@@ -434,6 +511,19 @@ class PreviewControllerTest {
                         .param("url", "https://video.example.com/watch/abc")
                         .header("X-LinkPeek-Render-Mode", "invalid-mode"))
                 .andExpect(status().isBadRequest());
+    }
+
+    private MvcResult performFreestylePreview() {
+        try {
+            return mockMvc.perform(get("/preview")
+                            .param("url", "https://video.example.com/watch/abc")
+                            .param("style", "freestyle")
+                            .header(HttpHeaders.USER_AGENT, "facebookexternalhit/1.1"))
+                    .andExpect(status().isOk())
+                    .andReturn();
+        } catch (Exception exception) {
+            throw new RuntimeException(exception);
+        }
     }
 
     @Test
@@ -624,6 +714,70 @@ class PreviewControllerTest {
     }
 
     @Test
+    void adminPreviewEventsEndpointListsCreatedLinksAndClearsCache() throws Exception {
+        testPreviewProvider.generatedTextCard.set(true);
+        testAiTitleClient.generatedTitle.set("\"AI 管理后台标题\"");
+        long now = System.currentTimeMillis();
+        jdbcTemplate.update(
+                "INSERT INTO admin_prompt (style, prompt, updated_at) VALUES (?, ?, ?)",
+                "FUN", "UC 风格", now
+        );
+        jdbcTemplate.update(
+                "INSERT INTO ai_provider (name, enabled, sort_order, base_url, model, effort, api_key, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "local", 1, 1, "https://api.openai.com/v1/chat/completions", "test-model", "low", "test-key", now
+        );
+
+        mockMvc.perform(get("/preview")
+                        .param("url", "https://video.example.com/watch/abc")
+                        .param("style", "fun")
+                        .header(HttpHeaders.USER_AGENT, "facebookexternalhit/1.1"))
+                .andExpect(status().isOk());
+
+        String previewKey = jdbcTemplate.queryForObject(
+                "SELECT preview_key FROM stats_event WHERE event_type = 'PREVIEW_CREATED' ORDER BY id DESC LIMIT 1",
+                String.class
+        );
+        mockMvc.perform(get("/media/thumb/{previewKey}.jpg", previewKey))
+                .andExpect(status().isOk());
+
+        Cookie cookie = adminCookie();
+        mockMvc.perform(get("/api/admin/preview-events")
+                        .cookie(cookie)
+                        .param("page", "1")
+                        .param("size", "10")
+                        .param("q", "FUN"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.size").value(10))
+                .andExpect(jsonPath("$.total").value(1))
+                .andExpect(jsonPath("$.items[0].previewKey").value(previewKey))
+                .andExpect(jsonPath("$.items[0].sourceUrl").value("https://video.example.com/watch/abc"))
+                .andExpect(jsonPath("$.items[0].canonicalUrl").value("https://video.example.com/watch/abc"))
+                .andExpect(jsonPath("$.items[0].providerId").value("stub"))
+                .andExpect(jsonPath("$.items[0].aiRequested").value(true))
+                .andExpect(jsonPath("$.items[0].aiSucceeded").value(true))
+                .andExpect(jsonPath("$.items[0].requestedStyle").value("FUN"))
+                .andExpect(jsonPath("$.items[0].actualStyle").value("FUN"))
+                .andExpect(jsonPath("$.items[0].aiProviderNames").value("local"))
+                .andExpect(jsonPath("$.items[0].aiDurationMs").value(12))
+                .andExpect(jsonPath("$.items[0].metadataCached").value(true))
+                .andExpect(jsonPath("$.items[0].thumbnailCached").value(true));
+
+        mockMvc.perform(delete("/api/admin/preview-events/{previewKey}/cache", previewKey)
+                        .cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.previewKey").value(previewKey))
+                .andExpect(jsonPath("$.deletedFiles").value(2));
+
+        mockMvc.perform(get("/api/admin/preview-events")
+                        .cookie(cookie)
+                        .param("q", "FUN"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].metadataCached").value(false))
+                .andExpect(jsonPath("$.items[0].thumbnailCached").value(false));
+    }
+
+    @Test
     void adminEndpointsRejectUnauthenticatedRequestsAndInvalidLogin() throws Exception {
         jdbcTemplate.update(
                 "INSERT INTO stats_link (preview_key, provider_id, canonical_url, title, site_name, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -652,6 +806,9 @@ class PreviewControllerTest {
                 .andExpect(status().isUnauthorized());
 
         mockMvc.perform(get("/api/admin/ai-provider-downgrade-config"))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/admin/preview-events"))
                 .andExpect(status().isUnauthorized());
 
         org.junit.jupiter.api.Assertions.assertEquals(1, jdbcTemplate.queryForObject("SELECT COUNT(*) FROM stats_event", Integer.class));
@@ -964,6 +1121,8 @@ class PreviewControllerTest {
         private final AtomicInteger requests = new AtomicInteger();
         private final AtomicReference<AiTitlePrompt> prompt = new AtomicReference<>(new AiTitlePrompt("", "", ""));
         private final AtomicReference<String> generatedTitle = new AtomicReference<>("AI title");
+        private final AtomicReference<CountDownLatch> blockedRequestStarted = new AtomicReference<>();
+        private final AtomicReference<CountDownLatch> blockedRequestRelease = new AtomicReference<>();
 
         TestAiTitleClient() {
             super(null, null);
@@ -976,10 +1135,51 @@ class PreviewControllerTest {
             return Optional.ofNullable(generatedTitle.get());
         }
 
+        @Override
+        public AiTitleResult generateTitleResult(AiProviderRecord provider, AiTitlePrompt prompt) {
+            requests.incrementAndGet();
+            this.prompt.set(prompt);
+            CountDownLatch started = blockedRequestStarted.get();
+            CountDownLatch release = blockedRequestRelease.get();
+            if (started != null && release != null) {
+                started.countDown();
+                try {
+                    org.junit.jupiter.api.Assertions.assertTrue(release.await(2, TimeUnit.SECONDS));
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException(exception);
+                } finally {
+                    blockedRequestStarted.set(null);
+                    blockedRequestRelease.set(null);
+                }
+            }
+            return new AiTitleResult(Optional.ofNullable(generatedTitle.get()), 12);
+        }
+
+        void blockNextRequest() {
+            blockedRequestStarted.set(new CountDownLatch(1));
+            blockedRequestRelease.set(new CountDownLatch(1));
+        }
+
+        boolean awaitBlockedRequest() throws InterruptedException {
+            CountDownLatch started = blockedRequestStarted.get();
+            return started != null && started.await(2, TimeUnit.SECONDS);
+        }
+
+        void releaseBlockedRequest() {
+            CountDownLatch release = blockedRequestRelease.get();
+            if (release != null) {
+                release.countDown();
+            }
+        }
+
         void reset() {
             requests.set(0);
             prompt.set(new AiTitlePrompt("", "", ""));
             generatedTitle.set("AI title");
+            releaseBlockedRequest();
+            blockedRequestStarted.set(null);
+            blockedRequestRelease.set(null);
         }
     }
 

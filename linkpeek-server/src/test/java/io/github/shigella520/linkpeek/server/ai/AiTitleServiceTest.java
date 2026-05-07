@@ -12,6 +12,7 @@ import io.github.shigella520.linkpeek.server.admin.service.AiTitleConfigService;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.net.URI;
 import java.net.http.HttpTimeoutException;
 import java.time.Clock;
 import java.time.Instant;
@@ -121,6 +122,66 @@ class AiTitleServiceTest {
 
         assertEquals("FUN", freestylePrompt.style());
         assertEquals("UC 风格", freestylePrompt.prompt());
+    }
+
+    @Test
+    void resolveFreestylePromptIsStableForSameUriWithinThirtySecondWindow() {
+        AdminPromptRecord fun = new AdminPromptRecord();
+        fun.setStyle("FUN");
+        fun.setPrompt("UC 风格");
+        AdminPromptRecord work = new AdminPromptRecord();
+        work.setStyle("WORK");
+        work.setPrompt("工作风格");
+        AiTitleService service = new AiTitleService(
+                new FakeAdminPromptMapper(List.of(work, fun)),
+                new FakeAiProviderMapper(List.of()),
+                new FakeAiTitleClient(),
+                configService(null),
+                null,
+                Clock.fixed(Instant.ofEpochMilli(29_999L), ZoneOffset.UTC)
+        );
+
+        AiTitleService.StylePrompt first = service.resolveStylePrompt(
+                "freestyle",
+                URI.create("https://example.com/post/1")
+        ).orElseThrow();
+        AiTitleService.StylePrompt second = service.resolveStylePrompt(
+                "freestyle",
+                URI.create("https://example.com/post/1")
+        ).orElseThrow();
+
+        assertEquals(first.style(), second.style());
+        assertEquals(first.promptHash(), second.promptHash());
+    }
+
+    @Test
+    void resolveFreestylePromptCanRefreshAfterThirtySecondWindow() {
+        AdminPromptRecord fun = new AdminPromptRecord();
+        fun.setStyle("FUN");
+        fun.setPrompt("UC 风格");
+        AdminPromptRecord work = new AdminPromptRecord();
+        work.setStyle("WORK");
+        work.setPrompt("工作风格");
+        AiTitleService service = new AiTitleService(
+                new FakeAdminPromptMapper(List.of(work, fun)),
+                new FakeAiProviderMapper(List.of()),
+                new FakeAiTitleClient(),
+                configService(null),
+                null,
+                Clock.fixed(Instant.ofEpochMilli(30_000L), ZoneOffset.UTC)
+        );
+
+        AiTitleService.StylePrompt first = service.resolveStylePrompt(
+                "freestyle",
+                URI.create("https://example.com/post/1")
+        ).orElseThrow();
+        AiTitleService.StylePrompt second = service.resolveStylePrompt(
+                "freestyle",
+                URI.create("https://example.com/post/1")
+        ).orElseThrow();
+
+        assertEquals(first.style(), second.style());
+        assertTrue(List.of("FUN", "WORK").contains(first.style()));
     }
 
     @Test
@@ -417,6 +478,11 @@ class AiTitleServiceTest {
 
         @Override
         public Optional<String> generateTitle(AiProviderRecord provider, AiTitlePrompt prompt) throws IOException {
+            return generateTitleResult(provider, prompt).title();
+        }
+
+        @Override
+        public AiTitleResult generateTitleResult(AiProviderRecord provider, AiTitlePrompt prompt) throws IOException {
             requestedProviderIds.add(provider.getId());
             requestedPrompts.add(prompt);
             if (timeoutProviderIds.contains(provider.getId())) {
@@ -425,7 +491,7 @@ class AiTitleServiceTest {
             if (failProviderIds.contains(provider.getId())) {
                 throw new IOException("provider failed");
             }
-            return Optional.ofNullable(title);
+            return new AiTitleResult(Optional.ofNullable(title), 25);
         }
     }
 }

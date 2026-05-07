@@ -53,6 +53,12 @@ public class StatisticsRecorder {
                 result.cacheHit(),
                 result.aiRequested(),
                 result.aiSucceeded(),
+                result.resolvedPreview().sourceUrl().toString(),
+                result.requestedStyle(),
+                result.actualStyle(),
+                joinAiProviderNames(result.aiProviderNames()),
+                result.aiDurationMs(),
+                result.crawlDurationMs(),
                 durationMs,
                 null
         );
@@ -76,6 +82,12 @@ public class StatisticsRecorder {
                 false,
                 false,
                 false,
+                resolvedPreview.sourceUrl().toString(),
+                null,
+                null,
+                "",
+                0,
+                0,
                 durationMs,
                 null
         );
@@ -100,6 +112,12 @@ public class StatisticsRecorder {
                 result.cacheHit(),
                 result.aiRequested(),
                 result.aiSucceeded(),
+                result.resolvedPreview().sourceUrl().toString(),
+                result.requestedStyle(),
+                result.actualStyle(),
+                joinAiProviderNames(result.aiProviderNames()),
+                result.aiDurationMs(),
+                result.crawlDurationMs(),
                 durationMs,
                 null
         );
@@ -146,6 +164,12 @@ public class StatisticsRecorder {
                 false,
                 false,
                 false,
+                resolvedPreview == null ? null : resolvedPreview.sourceUrl().toString(),
+                null,
+                null,
+                "",
+                0,
+                0,
                 durationMs,
                 errorCode
         );
@@ -169,6 +193,12 @@ public class StatisticsRecorder {
                 cacheHit,
                 false,
                 false,
+                metadata == null ? null : metadata.sourceUrl(),
+                null,
+                null,
+                "",
+                0,
+                0,
                 durationMs,
                 null
         );
@@ -186,6 +216,12 @@ public class StatisticsRecorder {
             boolean cacheHit,
             boolean aiRequested,
             boolean aiSucceeded,
+            String sourceUrl,
+            String requestedStyle,
+            String actualStyle,
+            String aiProviderNames,
+            long aiDurationMs,
+            long crawlDurationMs,
             long durationMs,
             StatisticsErrorCode errorCode
     ) {
@@ -211,6 +247,12 @@ public class StatisticsRecorder {
                     cacheHit,
                     aiRequested,
                     aiSucceeded,
+                    sourceUrl,
+                    requestedStyle,
+                    actualStyle,
+                    aiProviderNames,
+                    aiDurationMs,
+                    crawlDurationMs,
                     durationMs,
                     errorCode
             ));
@@ -254,6 +296,12 @@ public class StatisticsRecorder {
             boolean cacheHit,
             boolean aiRequested,
             boolean aiSucceeded,
+            String sourceUrl,
+            String requestedStyle,
+            String actualStyle,
+            String aiProviderNames,
+            long aiDurationMs,
+            long crawlDurationMs,
             long durationMs,
             StatisticsErrorCode errorCode
     ) {
@@ -267,8 +315,21 @@ public class StatisticsRecorder {
         record.setCacheHit(cacheHit);
         record.setAiRequested(aiRequested);
         record.setAiSucceeded(aiSucceeded);
+        record.setSourceUrl(sourceUrl);
+        record.setRequestedStyle(requestedStyle);
+        record.setActualStyle(actualStyle);
+        record.setAiProviderNames(aiProviderNames);
+        record.setAiDurationMs(Math.max(0, aiDurationMs));
+        record.setCrawlDurationMs(Math.max(0, crawlDurationMs));
         record.setDurationMs(durationMs);
         record.setErrorCode(errorCode == null ? null : errorCode.name());
         return record;
+    }
+
+    private String joinAiProviderNames(java.util.List<String> providerNames) {
+        if (providerNames == null || providerNames.isEmpty()) {
+            return "";
+        }
+        return String.join("/", providerNames);
     }
 }

@@ -98,6 +98,22 @@ public class DiskCacheManager {
         return videoDir().resolve(previewKey.value() + ".mp4");
     }
 
+    public CacheStatus cacheStatus(PreviewKey previewKey) {
+        return new CacheStatus(
+                existsAndFresh(metadataPath(previewKey)),
+                existsAndFresh(thumbnailPath(previewKey)),
+                existsAndFresh(videoPath(previewKey))
+        );
+    }
+
+    public CacheEvictionResult evictPreview(PreviewKey previewKey) {
+        int deleted = 0;
+        deleted += deleteTracked(metadataPath(previewKey));
+        deleted += deleteTracked(thumbnailPath(previewKey));
+        deleted += deleteTracked(videoPath(previewKey));
+        return new CacheEvictionResult(deleted);
+    }
+
     public ReentrantLock lockFor(PreviewKey previewKey) {
         return locks.computeIfAbsent(previewKey.value(), ignored -> new ReentrantLock());
     }
@@ -142,6 +158,26 @@ public class DiskCacheManager {
             return Instant.now().minusSeconds(ttlSeconds).isAfter(Files.getLastModifiedTime(path).toInstant());
         } catch (IOException exception) {
             return true;
+        }
+    }
+
+    private boolean existsAndFresh(Path path) {
+        if (!Files.exists(path)) {
+            return false;
+        }
+        if (!isExpired(path)) {
+            return true;
+        }
+        tryDelete(path);
+        return false;
+    }
+
+    private int deleteTracked(Path path) {
+        try {
+            return Files.deleteIfExists(path) ? 1 : 0;
+        } catch (IOException exception) {
+            log.debug("cache_delete_failed path={}", path, exception);
+            return 0;
         }
     }
 
@@ -204,5 +240,11 @@ public class DiskCacheManager {
     }
 
     private record PathStat(Path path, long size, Instant lastModified) {
+    }
+
+    public record CacheStatus(boolean metadata, boolean thumbnail, boolean video) {
+    }
+
+    public record CacheEvictionResult(int deletedFiles) {
     }
 }

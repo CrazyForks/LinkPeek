@@ -1,23 +1,29 @@
-package io.github.shigella520.linkpeek.server.stats.model;
+package io.github.shigella520.linkpeek.server.admin.model;
 
-public class StatisticsEventRecord {
+public class AdminPreviewEventRow {
+    private long id;
     private long occurredAt;
-    private String eventType;
     private String previewKey;
+    private String sourceUrl;
+    private String canonicalUrl;
     private String providerId;
-    private int httpStatus;
-    private boolean cacheHit;
     private boolean aiRequested;
     private boolean aiSucceeded;
-    private String sourceUrl;
     private String requestedStyle;
     private String actualStyle;
     private String aiProviderNames;
     private long aiDurationMs;
     private long crawlDurationMs;
     private long durationMs;
-    private String clientType;
-    private String errorCode;
+    private boolean cacheHit;
+
+    public long getId() {
+        return id;
+    }
+
+    public void setId(long id) {
+        this.id = id;
+    }
 
     public long getOccurredAt() {
         return occurredAt;
@@ -25,14 +31,6 @@ public class StatisticsEventRecord {
 
     public void setOccurredAt(long occurredAt) {
         this.occurredAt = occurredAt;
-    }
-
-    public String getEventType() {
-        return eventType;
-    }
-
-    public void setEventType(String eventType) {
-        this.eventType = eventType;
     }
 
     public String getPreviewKey() {
@@ -43,28 +41,28 @@ public class StatisticsEventRecord {
         this.previewKey = previewKey;
     }
 
+    public String getSourceUrl() {
+        return sourceUrl;
+    }
+
+    public void setSourceUrl(String sourceUrl) {
+        this.sourceUrl = sourceUrl;
+    }
+
+    public String getCanonicalUrl() {
+        return canonicalUrl;
+    }
+
+    public void setCanonicalUrl(String canonicalUrl) {
+        this.canonicalUrl = canonicalUrl;
+    }
+
     public String getProviderId() {
         return providerId;
     }
 
     public void setProviderId(String providerId) {
         this.providerId = providerId;
-    }
-
-    public int getHttpStatus() {
-        return httpStatus;
-    }
-
-    public void setHttpStatus(int httpStatus) {
-        this.httpStatus = httpStatus;
-    }
-
-    public boolean isCacheHit() {
-        return cacheHit;
-    }
-
-    public void setCacheHit(boolean cacheHit) {
-        this.cacheHit = cacheHit;
     }
 
     public boolean isAiRequested() {
@@ -81,14 +79,6 @@ public class StatisticsEventRecord {
 
     public void setAiSucceeded(boolean aiSucceeded) {
         this.aiSucceeded = aiSucceeded;
-    }
-
-    public String getSourceUrl() {
-        return sourceUrl;
-    }
-
-    public void setSourceUrl(String sourceUrl) {
-        this.sourceUrl = sourceUrl;
     }
 
     public String getRequestedStyle() {
@@ -139,19 +129,11 @@ public class StatisticsEventRecord {
         this.durationMs = durationMs;
     }
 
-    public String getClientType() {
-        return clientType;
+    public boolean isCacheHit() {
+        return cacheHit;
     }
 
-    public void setClientType(String clientType) {
-        this.clientType = clientType;
-    }
-
-    public String getErrorCode() {
-        return errorCode;
-    }
-
-    public void setErrorCode(String errorCode) {
-        this.errorCode = errorCode;
+    public void setCacheHit(boolean cacheHit) {
+        this.cacheHit = cacheHit;
     }
 }
