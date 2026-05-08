@@ -498,7 +498,8 @@
                 <tr>
                     <td class="nowrap" data-label="创建时间">${escapeHtml(formatTimestamp(item.occurredAt))}</td>
                     <td>
-                        <a class="url-cell" href="${escapeAttribute(item.sourceUrl || item.canonicalUrl)}" target="_blank" rel="noreferrer">${escapeHtml(item.sourceUrl || item.canonicalUrl || "-")}</a>
+                        <a class="url-cell" href="${escapeAttribute(item.sourceUrl || item.canonicalUrl)}" target="_blank" rel="noreferrer" title="${escapeAttribute(item.sourceUrl || item.canonicalUrl || "-")}">${escapeHtml(item.sourceUrl || item.canonicalUrl || "-")}</a>
+                        ${renderMetadataTitle(item)}
                         <div class="keyline">${escapeHtml(shortPreviewKey(item.previewKey))}</div>
                     </td>
                     <td>${escapeHtml(item.providerId || "-")}</td>
@@ -958,6 +959,14 @@
 
     function cacheBadge(label, enabled) {
         return `<span class="cache-badge ${enabled ? "is-on" : ""}">${escapeHtml(label)}</span>`;
+    }
+
+    function renderMetadataTitle(item) {
+        const title = String(item.metadataTitle || "").trim();
+        if (!title) {
+            return "";
+        }
+        return `<div class="metadata-title" title="${escapeAttribute(title)}">${escapeHtml(title)}</div>`;
     }
 
     function promptPreview(value) {

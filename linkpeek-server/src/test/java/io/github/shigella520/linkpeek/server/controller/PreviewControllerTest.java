@@ -816,6 +816,7 @@ class PreviewControllerTest {
                 .andExpect(jsonPath("$.items[0].previewKey").value(previewKey))
                 .andExpect(jsonPath("$.items[0].sourceUrl").value("https://video.example.com/watch/abc"))
                 .andExpect(jsonPath("$.items[0].canonicalUrl").value("https://video.example.com/watch/abc"))
+                .andExpect(jsonPath("$.items[0].metadataTitle").value("AI 管理后台标题"))
                 .andExpect(jsonPath("$.items[0].providerId").value("stub"))
                 .andExpect(jsonPath("$.items[0].aiRequested").value(true))
                 .andExpect(jsonPath("$.items[0].aiSucceeded").value(true))
@@ -836,6 +837,7 @@ class PreviewControllerTest {
                         .cookie(cookie)
                         .param("q", "FUN"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].metadataTitle").value(""))
                 .andExpect(jsonPath("$.items[0].metadataCached").value(false))
                 .andExpect(jsonPath("$.items[0].thumbnailCached").value(false));
     }

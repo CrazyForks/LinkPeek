@@ -1,6 +1,7 @@
 package io.github.shigella520.linkpeek.server.admin.service;
 
 import io.github.shigella520.linkpeek.core.model.PreviewKey;
+import io.github.shigella520.linkpeek.core.model.PreviewMetadata;
 import io.github.shigella520.linkpeek.server.admin.model.AdminPreviewEventRow;
 import io.github.shigella520.linkpeek.server.admin.persistence.AdminPreviewEventMapper;
 import io.github.shigella520.linkpeek.server.cache.DiskCacheManager;
@@ -49,17 +50,21 @@ public class AdminPreviewEventService {
     }
 
     private PreviewEventItem item(AdminPreviewEventRow row) {
-        DiskCacheManager.CacheStatus cacheStatus = row.getPreviewKey() == null
-                || row.getPreviewKey().isBlank()
-                || !PREVIEW_KEY_PATTERN.matcher(row.getPreviewKey()).matches()
+        PreviewKey previewKey = parsePreviewKey(row.getPreviewKey());
+        DiskCacheManager.CacheStatus cacheStatus = previewKey == null
                 ? new DiskCacheManager.CacheStatus(false, false, false)
-                : cacheManager.cacheStatus(new PreviewKey(row.getPreviewKey()));
+                : cacheManager.cacheStatus(previewKey);
+        String metadataTitle = previewKey == null ? "" : cacheManager.getMetadata(previewKey)
+                .map(PreviewMetadata::title)
+                .filter(StringUtils::hasText)
+                .orElse("");
         return new PreviewEventItem(
                 row.getId(),
                 row.getOccurredAt(),
                 row.getPreviewKey(),
                 row.getSourceUrl(),
                 row.getCanonicalUrl(),
+                metadataTitle,
                 row.getProviderId(),
                 row.isAiRequested(),
                 row.isAiSucceeded(),
@@ -74,6 +79,13 @@ public class AdminPreviewEventService {
                 cacheStatus.thumbnail(),
                 cacheStatus.video()
         );
+    }
+
+    private PreviewKey parsePreviewKey(String previewKey) {
+        if (!StringUtils.hasText(previewKey) || !PREVIEW_KEY_PATTERN.matcher(previewKey).matches()) {
+            return null;
+        }
+        return new PreviewKey(previewKey);
     }
 
     private int normalizePage(Integer page) {
@@ -120,6 +132,7 @@ public class AdminPreviewEventService {
             String previewKey,
             String sourceUrl,
             String canonicalUrl,
+            String metadataTitle,
             String providerId,
             boolean aiRequested,
             boolean aiSucceeded,
