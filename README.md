@@ -18,7 +18,7 @@
 
 - AI 标题生成：文本卡片可通过 Style Prompt 生成标题，支持 `FREESTYLE` 随机风格、AI Provider fallback、请求超时和自动降级。
 - 统一预览入口：爬虫返回 Open Graph HTML，普通浏览器点击直接跳转原始链接。
-- 多平台 provider：内置 Bilibili、V2EX、NGA、LINUX DO，并保留 provider SPI 便于扩展。
+- 多平台 provider：内置 Bilibili、GapHub、V2EX、NGA、LINUX DO，并保留 provider SPI 便于扩展。
 - 稳定缓存链路：本地缓存元数据和缩略图，并对并发预览渲染做单飞去重。
 - 运行时管理：`/admin` 可维护 Style Prompt、论坛 Cookie、AI Provider、服务日志和统计清理。
 - 数据看板：Dashboard 展示创建、打开、失败、热门链接、AI 渲染占比和 AI 成功率。
@@ -26,7 +26,7 @@
 
 ## AI 标题生成
 
-AI 标题生成是 LinkPeek 的核心增强能力：对 V2EX、NGA、LINUX DO 等文本卡片，服务会在保留原始内容的基础上，根据后台配置的 Style Prompt 生成更适合分享场景的一行标题；Bilibili 等真实图片卡片仍使用原始图片预览。
+AI 标题生成是 LinkPeek 的核心增强能力：对 GapHub、V2EX、NGA、LINUX DO 等文本卡片，服务会在保留原始内容的基础上，根据后台配置的 Style Prompt 生成更适合分享场景的一行标题；Bilibili 等真实图片卡片仍使用原始图片预览。
 
 - Style Prompt：控制标题风格，Style Key 保存和请求匹配都会统一转大写。
 - `FREESTYLE`：系统保留风格，会从已配置的 Style Prompt 中随机选择一个；Dashboard 生成器默认使用它。
@@ -134,6 +134,8 @@ LinkPeek/
 │   └── 通用领域模型、错误模型、URL 规范化、provider SPI
 ├── linkpeek-provider-bilibili/
 │   └── Bilibili URL 识别、短链解析、元数据抓取、缩略图下载
+├── linkpeek-provider-gaphub/
+│   └── GapHub 主题 URL 识别、HTML 元数据抓取、标题卡片生成
 ├── linkpeek-provider-linuxdo/
 │   └── LINUX DO 主题 URL 识别、HTML 元数据抓取、标题卡片生成
 ├── linkpeek-provider-nga/
@@ -161,6 +163,7 @@ LinkPeek/
 
 - `linkpeek-core`：定义 `PreviewProvider`、`PreviewMetadata`、`PreviewKey` 等核心抽象。
 - `linkpeek-provider-bilibili`：封装 Bilibili 平台相关逻辑，不把平台细节泄漏到 Web 层。
+- `linkpeek-provider-gaphub`：封装 GapHub 主题链接解析、HTML 元数据抓取和缩略图生成逻辑。
 - `linkpeek-provider-linuxdo`：封装 LINUX DO 主题链接解析、HTML 元数据抓取和缩略图生成逻辑。
 - `linkpeek-provider-nga`：封装 NGA 帖子 URL 识别、页面抓取、首楼摘要提取和缩略图生成逻辑。
 - `linkpeek-provider-v2ex`：封装 V2EX 话题页解析、回复锚点归一化、AI 标题上下文补齐和标题卡片生成逻辑。

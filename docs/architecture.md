@@ -22,6 +22,7 @@ client -> /preview?url=... -> server controller -> provider registry -> provider
 
 - `linkpeek-core`：定义所有模块共享的核心类型与契约。
 - `linkpeek-provider-bilibili`：提供 Bilibili 的具体 `PreviewProvider` 实现。
+- `linkpeek-provider-gaphub`：提供 GapHub 的具体 `PreviewProvider` 实现。
 - `linkpeek-provider-linuxdo`：提供 LINUX DO 的具体 `PreviewProvider` 实现。
 - `linkpeek-provider-nga`：提供 NGA 的具体 `PreviewProvider` 实现。
 - `linkpeek-provider-v2ex`：提供 V2EX 的具体 `PreviewProvider` 实现。

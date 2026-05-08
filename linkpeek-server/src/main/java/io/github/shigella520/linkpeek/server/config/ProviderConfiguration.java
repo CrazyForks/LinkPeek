@@ -3,6 +3,7 @@ package io.github.shigella520.linkpeek.server.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.shigella520.linkpeek.core.util.CrawlerMatcher;
 import io.github.shigella520.linkpeek.provider.bilibili.BilibiliPreviewProvider;
+import io.github.shigella520.linkpeek.provider.gaphub.GapHubPreviewProvider;
 import io.github.shigella520.linkpeek.provider.linuxdo.LinuxDoPreviewProvider;
 import io.github.shigella520.linkpeek.provider.nga.NgaPreviewProvider;
 import io.github.shigella520.linkpeek.provider.v2ex.V2exPreviewProvider;
@@ -54,6 +55,19 @@ public class ProviderConfiguration {
                 httpClient,
                 objectMapper,
                 URI.create("https://www.v2ex.com"),
+                properties.getDownloadTimeout(),
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        );
+    }
+
+    @Bean
+    public GapHubPreviewProvider gapHubPreviewProvider(
+            HttpClient httpClient,
+            LinkPeekProperties properties
+    ) {
+        return new GapHubPreviewProvider(
+                httpClient,
+                URI.create("https://gaphub.cc"),
                 properties.getDownloadTimeout(),
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         );

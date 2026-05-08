@@ -18,9 +18,12 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Pattern;
 
 @Service
 public class PreviewService {
+    private static final Pattern THUMBNAIL_VERSION_PATTERN = Pattern.compile("^[A-Za-z0-9._-]{1,64}$");
+
     private final PreviewProviderRegistry providerRegistry;
     private final DiskCacheManager cacheManager;
     private final AiTitleService aiTitleService;
@@ -187,32 +190,37 @@ public class PreviewService {
     }
 
     public ThumbnailResult ensureThumbnailResult(String previewKeyValue) {
+        return ensureThumbnailResult(previewKeyValue, null);
+    }
+
+    public ThumbnailResult ensureThumbnailResult(String previewKeyValue, String version) {
         PreviewKey previewKey = new PreviewKey(previewKeyValue);
-        Optional<Path> cached = cacheManager.getThumbnailPath(previewKey);
+        String normalizedVersion = normalizedThumbnailVersion(version);
+        Optional<Path> cached = cacheManager.getThumbnailPath(previewKey, normalizedVersion);
         if (cached.isPresent()) {
             return new ThumbnailResult(cached.get(), true, cacheManager.getMetadata(previewKey).orElse(null));
         }
 
-        ReentrantLock lock = cacheManager.lockFor(previewKey);
+        ReentrantLock lock = cacheManager.lockFor(previewKey, normalizedVersion);
         lock.lock();
         try {
-            Optional<Path> lockedCached = cacheManager.getThumbnailPath(previewKey);
+            Optional<Path> lockedCached = cacheManager.getThumbnailPath(previewKey, normalizedVersion);
             if (lockedCached.isPresent()) {
                 return new ThumbnailResult(lockedCached.get(), true, cacheManager.getMetadata(previewKey).orElse(null));
             }
-            return downloadThumbnail(previewKey);
+            return downloadThumbnail(previewKey, normalizedVersion);
         } finally {
             lock.unlock();
         }
     }
 
-    private ThumbnailResult downloadThumbnail(PreviewKey previewKey) {
+    private ThumbnailResult downloadThumbnail(PreviewKey previewKey, String version) {
         PreviewMetadata metadata = cacheManager.getMetadata(previewKey)
                 .orElseThrow(() -> new MetadataNotFoundException("Preview metadata is missing or expired."));
         PreviewProvider provider = providerRegistry.getById(metadata.providerId())
                 .orElseThrow(() -> new UnsupportedPreviewUrlException("The provider for this preview is not available."));
 
-        Path targetPath = cacheManager.thumbnailPath(previewKey);
+        Path targetPath = cacheManager.thumbnailPath(previewKey, version);
         try {
             Path downloaded = provider.downloadThumbnail(metadata, targetPath);
             cacheManager.evictIfNeeded();
@@ -220,6 +228,17 @@ public class PreviewService {
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to store thumbnail in cache", exception);
         }
+    }
+
+    private String normalizedThumbnailVersion(String version) {
+        if (version == null || version.isBlank()) {
+            return null;
+        }
+        String stripped = version.strip();
+        if (!THUMBNAIL_VERSION_PATTERN.matcher(stripped).matches()) {
+            throw new IllegalArgumentException("Thumbnail version is invalid.");
+        }
+        return stripped;
     }
 
     public record ResolvedPreview(
