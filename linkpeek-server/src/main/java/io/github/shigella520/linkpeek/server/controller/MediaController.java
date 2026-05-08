@@ -21,6 +21,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.file.Path;
@@ -50,11 +51,13 @@ public class MediaController {
     )
     public ResponseEntity<Resource> thumbnail(
             @Parameter(description = "预览资源的 opaque 标识，不暴露平台内部 ID")
-            @PathVariable String previewKey
+            @PathVariable String previewKey,
+            @Parameter(description = "可选缩略图内容版本，用于生成式标题卡片刷新外部缓存。")
+            @RequestParam(name = "v", required = false) String version
     ) {
         long startedAt = System.nanoTime();
         try {
-            PreviewService.ThumbnailResult result = previewService.ensureThumbnailResult(previewKey);
+            PreviewService.ThumbnailResult result = previewService.ensureThumbnailResult(previewKey, version);
             long durationMs = elapsedMillis(startedAt);
             statisticsRecorder.recordThumbnailServed(
                     previewKey,

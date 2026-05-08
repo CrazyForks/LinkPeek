@@ -81,7 +81,11 @@ public class DiskCacheManager {
     }
 
     public Optional<Path> getThumbnailPath(PreviewKey previewKey) {
-        Path path = thumbnailPath(previewKey);
+        return getThumbnailPath(previewKey, null);
+    }
+
+    public Optional<Path> getThumbnailPath(PreviewKey previewKey, String version) {
+        Path path = thumbnailPath(previewKey, version);
         if (!Files.exists(path) || isExpired(path)) {
             tryDelete(path);
             return Optional.empty();
@@ -91,7 +95,12 @@ public class DiskCacheManager {
     }
 
     public Path thumbnailPath(PreviewKey previewKey) {
-        return thumbDir().resolve(previewKey.value() + ".jpg");
+        return thumbnailPath(previewKey, null);
+    }
+
+    public Path thumbnailPath(PreviewKey previewKey, String version) {
+        String suffix = version == null || version.isBlank() ? "" : "-" + version.strip();
+        return thumbDir().resolve(previewKey.value() + suffix + ".jpg");
     }
 
     public Path videoPath(PreviewKey previewKey) {
@@ -101,7 +110,7 @@ public class DiskCacheManager {
     public CacheStatus cacheStatus(PreviewKey previewKey) {
         return new CacheStatus(
                 existsAndFresh(metadataPath(previewKey)),
-                existsAndFresh(thumbnailPath(previewKey)),
+                hasFreshThumbnail(previewKey),
                 existsAndFresh(videoPath(previewKey))
         );
     }
@@ -110,12 +119,18 @@ public class DiskCacheManager {
         int deleted = 0;
         deleted += deleteTracked(metadataPath(previewKey));
         deleted += deleteTracked(thumbnailPath(previewKey));
+        deleted += deleteVersionedThumbnails(previewKey);
         deleted += deleteTracked(videoPath(previewKey));
         return new CacheEvictionResult(deleted);
     }
 
     public ReentrantLock lockFor(PreviewKey previewKey) {
-        return locks.computeIfAbsent(previewKey.value(), ignored -> new ReentrantLock());
+        return lockFor(previewKey, null);
+    }
+
+    public ReentrantLock lockFor(PreviewKey previewKey, String version) {
+        String suffix = version == null || version.isBlank() ? "" : ":" + version.strip();
+        return locks.computeIfAbsent(previewKey.value() + suffix, ignored -> new ReentrantLock());
     }
 
     public void evictIfNeeded() throws IOException {
@@ -172,11 +187,48 @@ public class DiskCacheManager {
         return false;
     }
 
+    private boolean hasFreshThumbnail(PreviewKey previewKey) {
+        if (existsAndFresh(thumbnailPath(previewKey))) {
+            return true;
+        }
+
+        String prefix = previewKey.value() + "-";
+        try (Stream<Path> paths = Files.list(thumbDir())) {
+            return paths
+                    .filter(Files::isRegularFile)
+                    .filter(path -> {
+                        String fileName = path.getFileName().toString();
+                        return fileName.startsWith(prefix) && fileName.endsWith(".jpg");
+                    })
+                    .anyMatch(this::existsAndFresh);
+        } catch (IOException exception) {
+            log.debug("cache_status_versioned_thumbnail_failed previewKey={}", previewKey.value(), exception);
+            return false;
+        }
+    }
+
     private int deleteTracked(Path path) {
         try {
             return Files.deleteIfExists(path) ? 1 : 0;
         } catch (IOException exception) {
             log.debug("cache_delete_failed path={}", path, exception);
+            return 0;
+        }
+    }
+
+    private int deleteVersionedThumbnails(PreviewKey previewKey) {
+        String prefix = previewKey.value() + "-";
+        try (Stream<Path> paths = Files.list(thumbDir())) {
+            return paths
+                    .filter(Files::isRegularFile)
+                    .filter(path -> {
+                        String fileName = path.getFileName().toString();
+                        return fileName.startsWith(prefix) && fileName.endsWith(".jpg");
+                    })
+                    .mapToInt(this::deleteTracked)
+                    .sum();
+        } catch (IOException exception) {
+            log.debug("cache_delete_versioned_thumbnails_failed previewKey={}", previewKey.value(), exception);
             return 0;
         }
     }

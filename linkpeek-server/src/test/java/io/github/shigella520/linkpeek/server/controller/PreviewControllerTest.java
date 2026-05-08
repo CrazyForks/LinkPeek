@@ -407,6 +407,69 @@ class PreviewControllerTest {
     }
 
     @Test
+    void styledGeneratedCardImageUrlChangesWhenAiTitleChangesAfterCacheClear() throws Exception {
+        testPreviewProvider.generatedTextCard.set(true);
+        testAiTitleClient.generatedTitle.set("\"AI 第一标题\"");
+        long now = System.currentTimeMillis();
+        jdbcTemplate.update(
+                "INSERT INTO admin_prompt (style, prompt, updated_at) VALUES (?, ?, ?)",
+                "FUN", "UC 风格", now
+        );
+        jdbcTemplate.update(
+                "INSERT INTO ai_provider (name, enabled, sort_order, base_url, model, effort, api_key, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                "local", 1, 1, "https://api.openai.com/v1/chat/completions", "test-model", "low", "test-key", now
+        );
+
+        MvcResult first = mockMvc.perform(get("/preview")
+                        .param("url", "https://video.example.com/watch/abc")
+                        .param("style", "fun")
+                        .header(HttpHeaders.USER_AGENT, "facebookexternalhit/1.1"))
+                .andExpect(status().isOk())
+                .andReturn();
+        String firstHtml = first.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        org.junit.jupiter.api.Assertions.assertTrue(firstHtml.contains("AI 第一标题"));
+        String firstImageUrl = ogImageUrl(firstHtml);
+        String styledPreviewKey = jdbcTemplate.queryForObject(
+                "SELECT preview_key FROM stats_event WHERE event_type = 'PREVIEW_CREATED' ORDER BY id DESC LIMIT 1",
+                String.class
+        );
+
+        mockMvc.perform(get("/media/thumb/{previewKey}.jpg", styledPreviewKey)
+                        .param("v", imageVersion(firstImageUrl)))
+                .andExpect(status().isOk());
+
+        Cookie cookie = adminCookie();
+        mockMvc.perform(delete("/api/admin/preview-events/{previewKey}/cache", styledPreviewKey)
+                        .cookie(cookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.previewKey").value(styledPreviewKey))
+                .andExpect(jsonPath("$.deletedFiles").value(2));
+
+        testAiTitleClient.generatedTitle.set("\"AI 第二标题\"");
+        MvcResult second = mockMvc.perform(get("/preview")
+                        .param("url", "https://video.example.com/watch/abc")
+                        .param("style", "fun")
+                        .header(HttpHeaders.USER_AGENT, "facebookexternalhit/1.1"))
+                .andExpect(status().isOk())
+                .andReturn();
+        String secondHtml = second.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        org.junit.jupiter.api.Assertions.assertTrue(secondHtml.contains("AI 第二标题"));
+        String secondImageUrl = ogImageUrl(secondHtml);
+
+        org.junit.jupiter.api.Assertions.assertEquals(styledPreviewKey, jdbcTemplate.queryForObject(
+                "SELECT preview_key FROM stats_event WHERE event_type = 'PREVIEW_CREATED' ORDER BY id DESC LIMIT 1",
+                String.class
+        ));
+        org.junit.jupiter.api.Assertions.assertNotEquals(firstImageUrl, secondImageUrl);
+        org.junit.jupiter.api.Assertions.assertEquals(2, testAiTitleClient.requests.get());
+
+        mockMvc.perform(get("/media/thumb/{previewKey}.jpg", styledPreviewKey)
+                        .param("v", imageVersion(secondImageUrl)))
+                .andExpect(status().isOk());
+        org.junit.jupiter.api.Assertions.assertEquals(2, testPreviewProvider.thumbnailDownloads.get());
+    }
+
+    @Test
     void previewFreestyleUsesRandomConfiguredStylePrompt() throws Exception {
         testPreviewProvider.generatedTextCard.set(true);
         testAiTitleClient.generatedTitle.set("\"AI freestyle 标题\"");
@@ -1068,6 +1131,22 @@ class PreviewControllerTest {
 
     private static PreviewKey key() {
         return PreviewKey.fromCanonicalUrl("https://video.example.com/watch/abc");
+    }
+
+    private static String ogImageUrl(String html) {
+        String marker = "property=\"og:image\" content=\"";
+        int start = html.indexOf(marker);
+        org.junit.jupiter.api.Assertions.assertTrue(start >= 0, "Expected og:image meta tag.");
+        start += marker.length();
+        int end = html.indexOf('"', start);
+        org.junit.jupiter.api.Assertions.assertTrue(end > start, "Expected og:image content value.");
+        return html.substring(start, end);
+    }
+
+    private static String imageVersion(String imageUrl) {
+        int versionIndex = imageUrl.indexOf("?v=");
+        org.junit.jupiter.api.Assertions.assertTrue(versionIndex >= 0, "Expected image URL version query.");
+        return imageUrl.substring(versionIndex + 3);
     }
 
     private Cookie adminCookie() throws Exception {

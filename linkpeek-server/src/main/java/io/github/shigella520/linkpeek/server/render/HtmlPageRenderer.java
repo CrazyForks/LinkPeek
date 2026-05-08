@@ -7,8 +7,10 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class HtmlPageRenderer {
+    private static final int IMAGE_VERSION_LENGTH = 16;
+
     public String renderPreview(PreviewMetadata metadata, PreviewKey previewKey, String baseUrl) {
-        String imageUrl = join(baseUrl, "/media/thumb/" + previewKey.value() + ".jpg");
+        String imageUrl = join(baseUrl, "/media/thumb/" + previewKey.value() + ".jpg?v=" + imageVersion(metadata));
         return """
                 <!DOCTYPE html>
                 <html>
@@ -62,5 +64,19 @@ public class HtmlPageRenderer {
     private String join(String baseUrl, String path) {
         String normalizedBase = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         return normalizedBase + path;
+    }
+
+    private String imageVersion(PreviewMetadata metadata) {
+        String basis = metadata.thumbnailUrl();
+        if (metadata.thumbnailUrl().startsWith("generated://")) {
+            basis = String.join(
+                    "\n",
+                    metadata.thumbnailUrl(),
+                    metadata.title(),
+                    metadata.siteName(),
+                    metadata.canonicalUrl()
+            );
+        }
+        return PreviewKey.fromStableValue(basis).value().substring(0, IMAGE_VERSION_LENGTH);
     }
 }
