@@ -646,9 +646,9 @@ td .row-actions {
 .metadata-title {
     max-width: 100%;
     margin-top: 5px;
-    color: var(--text);
+    color: var(--muted);
     font-size: 13px;
-    font-weight: 650;
+    font-weight: 400;
     line-height: 1.35;
     overflow: hidden;
     text-overflow: ellipsis;
