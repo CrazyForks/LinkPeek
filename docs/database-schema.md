@@ -75,7 +75,7 @@ erDiagram
 - 所有时间字段都是 epoch milliseconds。
 - SQLite 没有布尔类型，代码使用 `INTEGER` 保存布尔值：`0=false`，`1=true`。
 - `provider_id` 有两种含义：
-  - 统计表中的 `provider_id` 是内容 provider，例如 `bilibili`、`v2ex`、`linuxdo`、`nga`。
+  - 统计表中的 `provider_id` 是内容 provider，例如 `bilibili`、`gaphub`、`v2ex`、`linuxdo`、`nga`。
   - `provider_config.provider_id` 是配置命名空间，例如 `linuxdo`、`nga`、`ai_title`、`ai_provider`。
 - AI Provider 是管理后台配置的上游 AI 服务，保存在 `ai_provider` 表；它和内容 provider 不是同一个概念。
 
