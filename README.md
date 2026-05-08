@@ -6,7 +6,8 @@
 
 ![LinkPeek Dashboard 预览](docs/preview.png)
 
-[在线体验 Live Demo](https://linkpeek.jianyutan.com/dashboard)管理密码:linkpeek
+[在线体验 Live Demo](https://linkpeek.jianyutan.com/dashboard)
+管理密码:linkpeek，在 Dashboard 连续按 3 下 6 弹出跳转按钮。
 
 [Raycast Script](docs/linkpeek.sh)
 
