@@ -1,7 +1,5 @@
 # LinkPeek
 
-[TOC]
-
 一个使用 Java 编写的链接预览代理服务，面向 iMessage 一类聊天分享场景，为受支持的第三方链接生成稳定的 Open Graph 预览页。
 
 采用 `Spring Boot 3.x + Maven` 多模块结构，对外统一暴露 `GET /preview?url=...` 入口，内部通过 provider SPI 解析目标链接，并重点提供可配置的 AI 标题生成能力。
@@ -9,6 +7,7 @@
 ![LinkPeek Dashboard 预览](docs/preview.png)
 
 [在线体验 Live Demo](https://linkpeek.jianyutan.com/dashboard)
+管理密码:linkpeek，在 Dashboard 连续按 3 下 6 弹出跳转按钮。
 
 [Raycast Script](docs/linkpeek.sh)
 
