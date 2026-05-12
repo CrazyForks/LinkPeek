@@ -1,5 +1,6 @@
 (function () {
     const FREESTYLE_STYLE = "FREESTYLE";
+    const CONFIRM_TIMEOUT_MS = 5000;
 
     const state = {
         prompts: [],
@@ -15,7 +16,8 @@
         },
         aiProviderDowngradeSaveTimer: null,
         aiProviderDowngradeSaveVersion: 0,
-        logRefreshTimer: null
+        logRefreshTimer: null,
+        activeDangerButton: null
     };
 
     function init() {
@@ -55,15 +57,20 @@
 
     function bindPurge() {
         document.getElementById("purge-button").addEventListener("click", async () => {
-            if (!window.confirm("确认清理全部统计数据？")) {
+            const button = document.getElementById("purge-button");
+            if (!confirmDangerAction(button, "确认清理")) {
                 return;
             }
+            button.disabled = true;
             setFeedback("purge-feedback", "正在清理...", "");
             try {
                 const result = await fetchJson("/api/admin/stats/purge-all", {method: "POST"});
                 setFeedback("purge-feedback", `已清理 ${result.deletedEvents || 0} 条事件，${result.deletedLinks || 0} 条链接。`, "is-success");
             } catch (error) {
                 setFeedback("purge-feedback", error.message, "is-error");
+            } finally {
+                resetDangerAction(button);
+                button.disabled = false;
             }
         });
     }
@@ -422,8 +429,20 @@
         });
         body.querySelectorAll("[data-delete-prompt]").forEach((button) => {
             button.addEventListener("click", async () => {
-                await fetchJson(`/api/admin/prompts/${encodeURIComponent(button.dataset.deletePrompt)}`, {method: "DELETE"});
-                await loadPrompts();
+                if (!confirmDangerAction(button, "确认删除")) {
+                    return;
+                }
+                button.disabled = true;
+                setFeedback("prompt-feedback", "正在删除 Style Prompt...", "");
+                try {
+                    await fetchJson(`/api/admin/prompts/${encodeURIComponent(button.dataset.deletePrompt)}`, {method: "DELETE"});
+                    await loadPrompts();
+                    setFeedback("prompt-feedback", "Style Prompt 已删除。", "is-success");
+                } catch (error) {
+                    resetDangerAction(button);
+                    button.disabled = false;
+                    setFeedback("prompt-feedback", error.message, "is-error");
+                }
             });
         });
     }
@@ -472,11 +491,23 @@
         });
         body.querySelectorAll("[data-delete-ai]").forEach((button) => {
             button.addEventListener("click", async () => {
-                await fetchJson(`/api/admin/ai-providers/${encodeURIComponent(button.dataset.deleteAi)}`, {method: "DELETE"});
-                if (document.getElementById("ai-id").value === button.dataset.deleteAi) {
-                    closeAiModal(false);
+                if (!confirmDangerAction(button, "确认删除")) {
+                    return;
                 }
-                await loadAiProviders();
+                button.disabled = true;
+                setFeedback("ai-feedback", "正在删除 AI Provider...", "");
+                try {
+                    await fetchJson(`/api/admin/ai-providers/${encodeURIComponent(button.dataset.deleteAi)}`, {method: "DELETE"});
+                    if (document.getElementById("ai-id").value === button.dataset.deleteAi) {
+                        closeAiModal(false);
+                    }
+                    await loadAiProviders();
+                    setFeedback("ai-feedback", "AI Provider 已删除。", "is-success");
+                } catch (error) {
+                    resetDangerAction(button);
+                    button.disabled = false;
+                    setFeedback("ai-feedback", error.message, "is-error");
+                }
             });
         });
     }
@@ -517,7 +548,7 @@
         body.querySelectorAll("[data-clear-preview-cache]").forEach((button) => {
             button.addEventListener("click", async () => {
                 const previewKey = button.dataset.clearPreviewCache;
-                if (!previewKey || !window.confirm("确认清理这个预览的元数据、缩略图和视频缓存？")) {
+                if (!previewKey || !confirmDangerAction(button, "确认清理")) {
                     return;
                 }
                 button.disabled = true;
@@ -529,6 +560,7 @@
                     await loadPreviewEvents();
                     setFeedback("preview-event-feedback", `已清理 ${result.deletedFiles || 0} 个缓存文件。`, "is-success");
                 } catch (error) {
+                    resetDangerAction(button);
                     button.disabled = false;
                     setFeedback("preview-event-feedback", error.message, "is-error");
                 }
@@ -862,6 +894,87 @@
         const node = document.getElementById(id);
         node.textContent = message || "";
         node.className = `feedback ${className || ""}`.trim();
+    }
+
+    function confirmDangerAction(button, confirmLabel) {
+        if (button.dataset.confirming === "true") {
+            clearDangerConfirmTimer(button);
+            state.activeDangerButton = null;
+            return true;
+        }
+
+        resetActiveDangerAction(button);
+        ensureDangerButtonLabels(button, confirmLabel);
+        forceDangerButtonTransitionStart(button);
+        button.dataset.confirming = "true";
+        state.activeDangerButton = button;
+        button.classList.add("is-confirming");
+        button.title = "再次点击执行";
+        button.setAttribute("aria-label", `${confirmLabel}，再次点击执行`);
+        button.dataset.confirmTimer = String(window.setTimeout(() => {
+            resetDangerAction(button);
+        }, CONFIRM_TIMEOUT_MS));
+        return false;
+    }
+
+    function resetDangerAction(button) {
+        if (!button) {
+            return;
+        }
+        clearDangerConfirmTimer(button);
+        button.dataset.confirming = "false";
+        button.classList.remove("is-confirming");
+        if (button.dataset.defaultLabel) {
+            button.setAttribute("aria-label", button.dataset.defaultLabel);
+        }
+        button.removeAttribute("title");
+        if (state.activeDangerButton === button) {
+            state.activeDangerButton = null;
+        }
+    }
+
+    function clearDangerConfirmTimer(button) {
+        const timer = Number(button.dataset.confirmTimer || 0);
+        if (timer) {
+            window.clearTimeout(timer);
+        }
+        delete button.dataset.confirmTimer;
+    }
+
+    function resetActiveDangerAction(exceptButton) {
+        if (state.activeDangerButton && state.activeDangerButton !== exceptButton) {
+            resetDangerAction(state.activeDangerButton);
+        }
+    }
+
+    function ensureDangerButtonLabels(button, confirmLabel) {
+        if (button.querySelector(".danger-button-label")) {
+            button.querySelector(".danger-button-confirm").textContent = confirmLabel;
+            return;
+        }
+
+        const defaultLabel = button.textContent.trim();
+        button.dataset.defaultLabel = defaultLabel;
+        button.setAttribute("aria-label", defaultLabel);
+        button.textContent = "";
+
+        const wrapper = document.createElement("span");
+        wrapper.className = "danger-button-label";
+
+        const defaultNode = document.createElement("span");
+        defaultNode.className = "danger-button-text danger-button-default";
+        defaultNode.textContent = defaultLabel;
+
+        const confirmNode = document.createElement("span");
+        confirmNode.className = "danger-button-text danger-button-confirm";
+        confirmNode.textContent = confirmLabel;
+
+        wrapper.append(defaultNode, confirmNode);
+        button.append(wrapper);
+    }
+
+    function forceDangerButtonTransitionStart(button) {
+        button.getBoundingClientRect();
     }
 
     function trimTrailingPunctuation(value) {
