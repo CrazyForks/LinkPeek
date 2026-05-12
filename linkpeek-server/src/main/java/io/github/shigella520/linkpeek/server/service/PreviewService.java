@@ -75,6 +75,7 @@ public class PreviewService {
         PreviewKey styledPreviewKey = aiTitleService.styledPreviewKey(resolvedPreview.canonicalUrl(), stylePrompt);
         Optional<PreviewMetadata> cachedStyled = cacheManager.getMetadata(styledPreviewKey);
         if (cachedStyled.isPresent()) {
+            markFreestyleSelectionSucceededIfNeeded(requestedStyle, resolvedPreview, stylePrompt);
             return new PreviewLoadResult(
                     resolvedPreview,
                     cachedStyled.get(),
@@ -95,6 +96,7 @@ public class PreviewService {
         try {
             cachedStyled = cacheManager.getMetadata(styledPreviewKey);
             if (cachedStyled.isPresent()) {
+                markFreestyleSelectionSucceededIfNeeded(requestedStyle, resolvedPreview, stylePrompt);
                 return new PreviewLoadResult(
                         resolvedPreview,
                         cachedStyled.get(),
@@ -119,6 +121,7 @@ public class PreviewService {
             if (styledResult.metadata().isPresent()) {
                 PreviewMetadata styledMetadata = styledResult.metadata().get();
                 cacheManager.storeMetadata(styledPreviewKey, styledMetadata);
+                markFreestyleSelectionSucceededIfNeeded(requestedStyle, resolvedPreview, stylePrompt);
                 return new PreviewLoadResult(
                         resolvedPreview,
                         styledMetadata,
@@ -138,6 +141,16 @@ public class PreviewService {
                     .withAiAttemptStats(styledResult.providerNames(), styledResult.durationMs());
         } finally {
             lock.unlock();
+        }
+    }
+
+    private void markFreestyleSelectionSucceededIfNeeded(
+            String requestedStyle,
+            ResolvedPreview resolvedPreview,
+            AiTitleService.StylePrompt stylePrompt
+    ) {
+        if (AiTitleService.isFreestyleStyle(requestedStyle)) {
+            aiTitleService.markFreestyleSelectionSucceeded(resolvedPreview.canonicalUrl(), stylePrompt);
         }
     }
 

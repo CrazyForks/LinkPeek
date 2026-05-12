@@ -27,6 +27,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 
 @Service
@@ -36,6 +37,10 @@ public class AiTitleService {
     public static final String FREESTYLE_STYLE = "FREESTYLE";
     public static final String DEFAULT_TITLE_FORMAT_PROMPT = AiTitleConfigService.DEFAULT_TITLE_FORMAT_PROMPT;
     private static final long FREESTYLE_STABLE_WINDOW_MILLIS = 30_000;
+    // FreeStyle 标题生成成功前不启动 30 秒窗口；该哨兵值表示风格选择仍在生成中。
+    private static final long FREESTYLE_PENDING_EXPIRES_AT_MILLIS = Long.MAX_VALUE;
+    // AI 长期失败时的兜底清理时间，只在选择表过大时用于回收旧 pending 记录。
+    private static final long FREESTYLE_PENDING_CLEANUP_MILLIS = 3_600_000;
     private static final Pattern STYLE_PATTERN = Pattern.compile("^[A-Za-z0-9._-]{1,64}$");
     private static final int MAX_TITLE_CODE_POINTS = 120;
 
@@ -102,16 +107,7 @@ public class AiTitleService {
     }
 
     private Optional<StylePrompt> resolveFreestylePrompt(URI stableFreestyleUri) {
-        List<StylePrompt> prompts = adminPromptMapper.selectAllPrompts().stream()
-                .filter(prompt -> prompt != null
-                        && StringUtils.hasText(prompt.getStyle())
-                        && STYLE_PATTERN.matcher(prompt.getStyle().strip()).matches()
-                        && !isFreestyleStyle(prompt.getStyle())
-                        && StringUtils.hasText(prompt.getPrompt()))
-                .sorted(Comparator.comparing(prompt -> normalizeStyleKey(prompt.getStyle())))
-                .map(this::stylePrompt)
-                .flatMap(Optional::stream)
-                .toList();
+        List<StylePrompt> prompts = freestylePrompts();
         if (prompts.isEmpty()) {
             return Optional.empty();
         }
@@ -124,18 +120,56 @@ public class AiTitleService {
     private StylePrompt stableFreestyleSelection(URI stableFreestyleUri, List<StylePrompt> prompts) {
         long now = clock.millis();
         if (freestyleSelections.size() > 4_096) {
-            freestyleSelections.entrySet().removeIf(entry -> entry.getValue().expiresAtMillis() <= now);
+            freestyleSelections.entrySet().removeIf(entry -> entry.getValue().isRemovable(now));
         }
         FreestyleSelection selection = freestyleSelections.compute(
                 stableFreestyleKey(stableFreestyleUri, prompts),
-                (ignored, existing) -> existing != null && existing.expiresAtMillis() > now
+                (ignored, existing) -> existing != null && !existing.isExpired(now)
                         ? existing
                         : new FreestyleSelection(
                                 prompts.get(ThreadLocalRandom.current().nextInt(prompts.size())),
-                                now + FREESTYLE_STABLE_WINDOW_MILLIS
+                                FREESTYLE_PENDING_EXPIRES_AT_MILLIS,
+                                // 首次抽到风格后先保持 pending，避免 iMessage 超时重试时重新随机。
+                                now
                         )
         );
         return selection.stylePrompt();
+    }
+
+    // AI 标题生成成功或命中缓存后，才把 pending 选择转入 30 秒稳定窗口。
+    public boolean markFreestyleSelectionSucceeded(URI stableFreestyleUri, StylePrompt stylePrompt) {
+        if (stableFreestyleUri == null || stylePrompt == null) {
+            return false;
+        }
+        List<StylePrompt> prompts = freestylePrompts();
+        if (prompts.isEmpty()) {
+            return false;
+        }
+        long expiresAtMillis = clock.millis() + FREESTYLE_STABLE_WINDOW_MILLIS;
+        AtomicBoolean marked = new AtomicBoolean(false);
+        freestyleSelections.computeIfPresent(stableFreestyleKey(stableFreestyleUri, prompts), (ignored, existing) ->
+                {
+                    if (existing.stylePrompt().equals(stylePrompt) && existing.isPending()) {
+                        marked.set(true);
+                        return new FreestyleSelection(existing.stylePrompt(), expiresAtMillis, 0);
+                    }
+                    return existing;
+                }
+        );
+        return marked.get();
+    }
+
+    private List<StylePrompt> freestylePrompts() {
+        return adminPromptMapper.selectAllPrompts().stream()
+                .filter(prompt -> prompt != null
+                        && StringUtils.hasText(prompt.getStyle())
+                        && STYLE_PATTERN.matcher(prompt.getStyle().strip()).matches()
+                        && !isFreestyleStyle(prompt.getStyle())
+                        && StringUtils.hasText(prompt.getPrompt()))
+                .sorted(Comparator.comparing(prompt -> normalizeStyleKey(prompt.getStyle())))
+                .map(this::stylePrompt)
+                .flatMap(Optional::stream)
+                .toList();
     }
 
     private String stableFreestyleKey(URI stableFreestyleUri, List<StylePrompt> prompts) {
@@ -347,7 +381,19 @@ public class AiTitleService {
     public record StylePrompt(String style, String prompt, String titleFormatPrompt, String promptHash) {
     }
 
-    private record FreestyleSelection(StylePrompt stylePrompt, long expiresAtMillis) {
+    private record FreestyleSelection(StylePrompt stylePrompt, long expiresAtMillis, long pendingStartedAtMillis) {
+        private boolean isPending() {
+            return expiresAtMillis == FREESTYLE_PENDING_EXPIRES_AT_MILLIS;
+        }
+
+        private boolean isExpired(long now) {
+            return !isPending() && expiresAtMillis <= now;
+        }
+
+        private boolean isRemovable(long now) {
+            return isExpired(now)
+                    || (isPending() && pendingStartedAtMillis + FREESTYLE_PENDING_CLEANUP_MILLIS <= now);
+        }
     }
 
     public record StyledMetadataResult(Optional<PreviewMetadata> metadata, List<String> providerNames, long durationMs) {
