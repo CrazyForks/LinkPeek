@@ -89,10 +89,12 @@ a {
 }
 
 button {
+    position: relative;
     min-height: 38px;
     border: 0;
     border-radius: 8px;
     padding: 0 14px;
+    overflow: hidden;
     background: var(--text);
     color: #ffffff;
     font-weight: 700;
@@ -107,6 +109,45 @@ button.secondary {
 
 button.danger {
     background: var(--danger);
+}
+
+button.danger.is-confirming {
+    background: #7f1d1d;
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.26);
+}
+
+.danger-button-label {
+    position: relative;
+    display: inline-grid;
+    align-items: center;
+    min-width: max-content;
+    height: 100%;
+}
+
+.danger-button-text {
+    grid-area: 1 / 1;
+    transition: transform 180ms ease, opacity 180ms ease;
+    white-space: nowrap;
+}
+
+.danger-button-default {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.danger-button-confirm {
+    transform: translateX(110%);
+    opacity: 0;
+}
+
+button.danger.is-confirming .danger-button-default {
+    transform: translateX(-110%);
+    opacity: 0;
+}
+
+button.danger.is-confirming .danger-button-confirm {
+    transform: translateX(0);
+    opacity: 1;
 }
 
 button.test-button.is-success {
@@ -820,8 +861,13 @@ td .row-actions {
 }
 
 td button {
+    min-width: 48px;
     min-height: 32px;
     padding: 0 10px;
+}
+
+td button.danger {
+    min-width: 82px;
 }
 
 .muted {
