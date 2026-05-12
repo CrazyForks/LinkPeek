@@ -16,6 +16,7 @@ import java.net.URI;
 import java.net.http.HttpTimeoutException;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -125,63 +126,64 @@ class AiTitleServiceTest {
     }
 
     @Test
-    void resolveFreestylePromptIsStableForSameUriWithinThirtySecondWindow() {
+    void resolveFreestylePromptDoesNotRefreshBeforeAiTitleSucceeds() {
         AdminPromptRecord fun = new AdminPromptRecord();
         fun.setStyle("FUN");
         fun.setPrompt("UC 风格");
         AdminPromptRecord work = new AdminPromptRecord();
         work.setStyle("WORK");
         work.setPrompt("工作风格");
+        MutableClock clock = new MutableClock(0);
         AiTitleService service = new AiTitleService(
                 new FakeAdminPromptMapper(List.of(work, fun)),
                 new FakeAiProviderMapper(List.of()),
                 new FakeAiTitleClient(),
                 configService(null),
                 null,
-                Clock.fixed(Instant.ofEpochMilli(29_999L), ZoneOffset.UTC)
+                clock
         );
+        URI uri = URI.create("https://example.com/post/1");
 
-        AiTitleService.StylePrompt first = service.resolveStylePrompt(
-                "freestyle",
-                URI.create("https://example.com/post/1")
-        ).orElseThrow();
-        AiTitleService.StylePrompt second = service.resolveStylePrompt(
-                "freestyle",
-                URI.create("https://example.com/post/1")
-        ).orElseThrow();
+        AiTitleService.StylePrompt first = service.resolveStylePrompt("freestyle", uri).orElseThrow();
+        clock.setMillis(120_000L);
+        AiTitleService.StylePrompt second = service.resolveStylePrompt("freestyle", uri).orElseThrow();
 
         assertEquals(first.style(), second.style());
         assertEquals(first.promptHash(), second.promptHash());
     }
 
     @Test
-    void resolveFreestylePromptCanRefreshAfterThirtySecondWindow() {
+    void markFreestyleSelectionSucceededStartsThirtySecondWindow() {
         AdminPromptRecord fun = new AdminPromptRecord();
         fun.setStyle("FUN");
         fun.setPrompt("UC 风格");
         AdminPromptRecord work = new AdminPromptRecord();
         work.setStyle("WORK");
         work.setPrompt("工作风格");
+        MutableClock clock = new MutableClock(0);
         AiTitleService service = new AiTitleService(
                 new FakeAdminPromptMapper(List.of(work, fun)),
                 new FakeAiProviderMapper(List.of()),
                 new FakeAiTitleClient(),
                 configService(null),
                 null,
-                Clock.fixed(Instant.ofEpochMilli(30_000L), ZoneOffset.UTC)
+                clock
         );
+        URI uri = URI.create("https://example.com/post/1");
 
-        AiTitleService.StylePrompt first = service.resolveStylePrompt(
-                "freestyle",
-                URI.create("https://example.com/post/1")
-        ).orElseThrow();
-        AiTitleService.StylePrompt second = service.resolveStylePrompt(
-                "freestyle",
-                URI.create("https://example.com/post/1")
-        ).orElseThrow();
+        AiTitleService.StylePrompt first = service.resolveStylePrompt("freestyle", uri).orElseThrow();
 
-        assertEquals(first.style(), second.style());
-        assertTrue(List.of("FUN", "WORK").contains(first.style()));
+        assertTrue(service.markFreestyleSelectionSucceeded(uri, first));
+
+        clock.setMillis(29_999L);
+        AiTitleService.StylePrompt stillStable = service.resolveStylePrompt("freestyle", uri).orElseThrow();
+        assertEquals(first.style(), stillStable.style());
+        assertEquals(first.promptHash(), stillStable.promptHash());
+        assertFalse(service.markFreestyleSelectionSucceeded(uri, stillStable));
+
+        clock.setMillis(30_001L);
+        AiTitleService.StylePrompt refreshed = service.resolveStylePrompt("freestyle", uri).orElseThrow();
+        assertTrue(service.markFreestyleSelectionSucceeded(uri, refreshed));
     }
 
     @Test
@@ -308,6 +310,33 @@ class AiTitleServiceTest {
                 new FakeProviderConfigMapper(configuredOutputConstraint),
                 Clock.fixed(Instant.ofEpochMilli(1234L), ZoneOffset.UTC)
         );
+    }
+
+    private static final class MutableClock extends Clock {
+        private long epochMillis;
+
+        private MutableClock(long epochMillis) {
+            this.epochMillis = epochMillis;
+        }
+
+        private void setMillis(long epochMillis) {
+            this.epochMillis = epochMillis;
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return Clock.fixed(instant(), zone);
+        }
+
+        @Override
+        public Instant instant() {
+            return Instant.ofEpochMilli(epochMillis);
+        }
     }
 
     private static final class FakeAdminPromptMapper implements AdminPromptMapper {

@@ -637,8 +637,22 @@ td .row-actions {
 .url-cell {
     display: block;
     max-width: 100%;
-    overflow-wrap: anywhere;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     line-height: 1.45;
+}
+
+.metadata-title {
+    max-width: 100%;
+    margin-top: 5px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .keyline {
